@@ -61,6 +61,7 @@
   let forceMuted = $state(false);
   let isScrubbing = $state(false);
   let isPlaying = $state(false);
+  let isTagProcessing = $state(false); // New state to track tag processing
 
   // Fast playback variables
   let normalPlaybackRate = 1.0;
@@ -138,6 +139,9 @@
   // Minimum and maximum zoom levels
   const MIN_SCALE = 1;
   const MAX_SCALE = 5;
+
+  // Store buttons being processed to prevent multiple clicks
+  let processingTagIds = $state<string[]>([]);
 
   onMount(async () => {
     if (videoPlayer) {
@@ -472,29 +476,19 @@
 
   const handleCancelTag = () => (isTagFormOpen = false);
 
+  // IMPROVED: Handle adding tags with better error handling and state updates
   const handleTag = async (tagIds: string[]) => {
     if (!asset?.id) return;
 
-    const ids = await tagAssets({ tagIds, assetIds: [asset.id], showNotification: false });
-    if (ids) {
-      isTagFormOpen = false;
-    }
+    try {
+      isTagProcessing = true;
+      const ids = await tagAssets({ tagIds, assetIds: [asset.id], showNotification: false });
+      
+      if (ids) {
+        isTagFormOpen = false;
+      }
 
-    asset = await getAssetInfo({ id: asset.id });
-
-    // Update selected preset tags
-    if (asset?.tags) {
-      selectedPresetTags = asset.tags
-        .filter((tag) => presetTags.some((preset) => preset.value === tag.value))
-        .map((tag) => tag.value);
-    }
-  };
-
-  const handleRemoveTag = async (tagId: string) => {
-    if (!asset?.id) return;
-
-    const ids = await removeTag({ tagIds: [tagId], assetIds: [asset.id], showNotification: false });
-    if (ids) {
+      // Always refresh asset info
       asset = await getAssetInfo({ id: asset.id });
 
       // Update selected preset tags
@@ -503,39 +497,120 @@
           .filter((tag) => presetTags.some((preset) => preset.value === tag.value))
           .map((tag) => tag.value);
       }
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_add_tag'));
+    } finally {
+      isTagProcessing = false;
     }
   };
 
-  // Function to toggle preset tag with one click
-  const togglePresetTag = async (presetTagValue: string) => {
+  // IMPROVED: Handle removing tags with better error handling and state updates
+  const handleRemoveTag = async (tagId: string) => {
     if (!asset?.id) return;
 
-    // Find if this tag already exists on the asset
-    const existingTag = asset.tags.find((tag) => tag.value === presetTagValue);
+    try {
+      isTagProcessing = true;
+      const ids = await removeTag({ tagIds: [tagId], assetIds: [asset.id], showNotification: false });
+      
+      if (ids) {
+        // Refresh asset info
+        asset = await getAssetInfo({ id: asset.id });
 
-    if (existingTag) {
-      // Remove tag if it exists on the asset
-      await handleRemoveTag(existingTag.id);
-    } else {
-      // Add tag if it doesn't exist on the asset
-
-      // Check if tag exists in the system
-      const tagId = availableTagsMap[presetTagValue.toLowerCase()];
-
-      if (tagId) {
-        // Tag exists in system, apply it directly
-        await handleTag([tagId]);
-      } else {
-        // Tag doesn't exist in system, need to create it first
-        // For now, just open tag form as fallback
-        isTagFormOpen = true;
+        // Update selected preset tags
+        if (asset?.tags) {
+          selectedPresetTags = asset.tags
+            .filter((tag) => presetTags.some((preset) => preset.value === tag.value))
+            .map((tag) => tag.value);
+        }
       }
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_remove_tag'));
+    } finally {
+      isTagProcessing = false;
+    }
+  };
+
+  // FIXED: Improved toggle preset tag function with proper event handling and debouncing
+  const togglePresetTag = async (presetTagValue: string, event: MouseEvent) => {
+    if (!asset?.id || isTagProcessing) return;
+    
+    // Get the tag ID to track in processing state
+    const tagToProcess = presetTagValue.toLowerCase();
+    
+    // Check if this tag is already being processed
+    if (processingTagIds.includes(tagToProcess)) {
+      return; // Skip if already processing this tag
+    }
+    
+    try {
+      // Add to processing list
+      processingTagIds = [...processingTagIds, tagToProcess];
+      isTagProcessing = true;
+      
+      // Get the button element to show visual feedback
+      const button = event.currentTarget as HTMLButtonElement;
+      button.disabled = true;
+      
+      // Find if this tag already exists on the asset
+      const existingTag = asset.tags.find(
+        (tag) => tag.value.toLowerCase() === presetTagValue.toLowerCase()
+      );
+
+      if (existingTag) {
+        // Remove tag if it exists on the asset
+        await handleRemoveTag(existingTag.id);
+      } else {
+        // Add tag if it doesn't exist on the asset
+        // Check if tag exists in the system
+        const tagId = availableTagsMap[presetTagValue.toLowerCase()];
+
+        if (tagId) {
+          // Tag exists in system, apply it directly
+          await handleTag([tagId]);
+        } else {
+          // Tag doesn't exist in system, need to create it first
+          // For now, just open tag form as fallback
+          isTagFormOpen = true;
+        }
+      }
+      
+      // Make sure we refresh the asset info after tag operation
+      asset = await getAssetInfo({ id: asset.id });
+      
+      // Update selected preset tags
+      if (asset?.tags) {
+        selectedPresetTags = asset.tags
+          .filter((tag) => presetTags.some((preset) => preset.value.toLowerCase() === tag.value.toLowerCase()))
+          .map((tag) => tag.value);
+      }
+      
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_update_tag'));
+    } finally {
+      // Remove from processing list with a delay to prevent rapid clicking
+      setTimeout(() => {
+        processingTagIds = processingTagIds.filter(id => id !== tagToProcess);
+        
+        // Only set isTagProcessing to false when all operations complete
+        if (processingTagIds.length === 0) {
+          isTagProcessing = false;
+        }
+        
+        // Re-enable the button
+        const button = event.currentTarget as HTMLButtonElement;
+        button.disabled = false;
+      }, 300);
     }
   };
 
   // Check if a preset tag is already applied to the asset
   const isPresetTagSelected = (tagValue: string): boolean => {
-    return asset?.tags?.some((tag) => tag.value === tagValue) || false;
+    return asset?.tags?.some((tag) => tag.value.toLowerCase() === tagValue.toLowerCase()) || false;
+  };
+  
+  // Check if a tag is currently being processed
+  const isTagBeingProcessed = (tagValue: string): boolean => {
+    return processingTagIds.includes(tagValue.toLowerCase());
   };
 
   // Toggle tag elements visibility
@@ -748,6 +823,7 @@
         </button>
       </div>
     {/if}
+
 
     <!-- Auto Skip Button - hide when zoomed -->
     {#if !isZoomed}
