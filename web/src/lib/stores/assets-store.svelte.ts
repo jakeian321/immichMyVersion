@@ -30,8 +30,8 @@ const {
   TIMELINE: { INTERSECTION_EXPAND_TOP, INTERSECTION_EXPAND_BOTTOM },
 } = TUNABLES;
 
-const THUMBNAIL_HEIGHT = 235;
-const GAP = 12;
+const THUMBNAIL_HEIGHT = 1000;
+const GAP = 18;
 const HEADER = 49; //(1.5rem)
 
 type AssetApiGetTimeBucketsRequest = Parameters<typeof getTimeBuckets>[0];
@@ -650,7 +650,9 @@ export class AssetStore {
     const changed = value !== this.#viewportWidth;
     this.#viewportWidth = value;
     this.suspendTransitions = true;
-    this.#rowHeight = value < 850 ? 100 : 235;
+    // this.#rowHeight = value < 850 ? 100 : 235;
+    this.#rowHeight = value < 850 ? 300 : 450; // Increased from 100 and 235
+
     // side-effect - its ok!
     void this.#updateViewportGeometry(changed);
   }
@@ -954,11 +956,18 @@ export class AssetStore {
   createLayoutOptions() {
     const viewportWidth = this.viewportWidth;
 
+    // return {
+    //   spacing: 2,
+    //   heightTolerance: 0.15,
+    //   rowHeight: this.#rowHeight,
+    //   rowWidth: Math.floor(viewportWidth),
+    // };
+
     return {
-      spacing: 2,
+      spacing: 5, // Increased from 2
       heightTolerance: 0.15,
       rowHeight: this.#rowHeight,
-      rowWidth: Math.floor(viewportWidth),
+      rowWidth: Math.floor(viewportWidth * 0.95), // Slightly reduced to allow for bigger margins
     };
   }
   #updateGeometry(bucket: AssetBucket, invalidateHeight: boolean) {
@@ -968,9 +977,16 @@ export class AssetStore {
     if (!bucket.isLoaded) {
       // optimize - if bucket already has data, no need to create estimates
       const viewportWidth = this.viewportWidth;
+      // if (!bucket.isBucketHeightActual) {
+      //   const unwrappedWidth = (3 / 2) * bucket.bucketCount * THUMBNAIL_HEIGHT * (7 / 10);
+      //   const rows = Math.ceil(unwrappedWidth / viewportWidth);
+      //   const height = 51 + Math.max(1, rows) * THUMBNAIL_HEIGHT;
+      //   bucket.bucketHeight = height;
+      // }
       if (!bucket.isBucketHeightActual) {
         const unwrappedWidth = (3 / 2) * bucket.bucketCount * THUMBNAIL_HEIGHT * (7 / 10);
-        const rows = Math.ceil(unwrappedWidth / viewportWidth);
+        // Change the divisor to create fewer columns
+        const rows = Math.ceil(unwrappedWidth / (viewportWidth / 3)); // Forces roughly 3 columns
         const height = 51 + Math.max(1, rows) * THUMBNAIL_HEIGHT;
         bucket.bucketHeight = height;
       }
