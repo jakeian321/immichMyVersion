@@ -26,6 +26,7 @@ export class TagService extends BaseService {
   }
 
   async get(auth: AuthDto, id: string): Promise<TagResponseDto> {
+    console.log('Fetching tag with ID:', id); // 👈
     await this.requireAccess({ auth, permission: Permission.TAG_READ, ids: [id] });
     const tag = await this.findOrFail(id);
     return mapTag(tag);
@@ -44,6 +45,8 @@ export class TagService extends BaseService {
     const userId = auth.user.id;
     const value = parent ? `${parent.value}/${dto.name}` : dto.name;
     const duplicate = await this.tagRepository.getByValue(userId, value);
+    console.log('Searching tag by value:', value); // 👈
+
     if (duplicate) {
       throw new BadRequestException(`A tag with that name already exists`);
     }
@@ -145,4 +148,18 @@ export class TagService extends BaseService {
     }
     return tag;
   }
+
+  // In tag.service.ts 888999888
+// In tag.service.ts
+async getTagsByAlbumId(auth: AuthDto, albumId: string): Promise<TagResponseDto[]> {
+  // Verify user has access to the album
+  await this.albumService.checkAccess({ auth, albumId, permission: Permission.ALBUM_READ });
+  
+  // Get all tags associated with assets in this album
+  const tags = await this.tagRepository.getTagsByAlbumId(auth.user.id, albumId);
+  
+  // Map to DTOs and return
+  return tags.map(tag => this.mapToDto(tag));
+}
+
 }

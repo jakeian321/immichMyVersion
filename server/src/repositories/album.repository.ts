@@ -63,7 +63,31 @@ const withSharedLink = (eb: ExpressionBuilder<DB, 'albums'>) => {
   );
 };
 
-const withAssets = (eb: ExpressionBuilder<DB, 'albums'>) => {
+
+
+
+
+
+//888999888
+// const withAssets = (eb: ExpressionBuilder<DB, 'albums'>) => {
+//   return eb
+//     .selectFrom((eb) =>
+//       eb
+//         .selectFrom('assets')
+//         .selectAll('assets')
+//         .leftJoin('exif', 'assets.id', 'exif.assetId')
+//         .select((eb) => eb.table('exif').as('exifInfo'))
+//         .innerJoin('albums_assets_assets', 'albums_assets_assets.assetsId', 'assets.id')
+//         .whereRef('albums_assets_assets.albumsId', '=', 'albums.id')
+//         .where('assets.deletedAt', 'is', null)
+//         .orderBy('assets.fileCreatedAt', 'desc')
+//         .as('asset'),
+//     )
+//     .select((eb) => eb.fn.jsonAgg('asset').as('assets'))
+//     .as('assets');
+// };
+
+const withAssets = (eb: ExpressionBuilder<DB, 'albums'>, order?: string) => {
   return eb
     .selectFrom((eb) =>
       eb
@@ -74,30 +98,71 @@ const withAssets = (eb: ExpressionBuilder<DB, 'albums'>) => {
         .innerJoin('albums_assets_assets', 'albums_assets_assets.assetsId', 'assets.id')
         .whereRef('albums_assets_assets.albumsId', '=', 'albums.id')
         .where('assets.deletedAt', 'is', null)
-        .orderBy('assets.fileCreatedAt', 'desc')
+        .orderBy(order === 'size_desc' ? 'assets.sizeInBytes' : 'assets.fileCreatedAt', 
+                order === 'size_asc' ? 'asc' : order === 'asc' ? 'asc' : 'desc')
         .as('asset'),
     )
     .select((eb) => eb.fn.jsonAgg('asset').as('assets'))
     .as('assets');
 };
 
+
+
+
+
+
+
+
 @Injectable()
 export class AlbumRepository {
   constructor(@InjectKysely() private db: Kysely<DB>) {}
 
+
+
+
+
+  //888999888
+  // @GenerateSql({ params: [DummyValue.UUID, { withAssets: true }] })
+  // async getById(id: string, options: AlbumInfoOptions): Promise<AlbumEntity | undefined> {
+  //   return this.db
+  //     .selectFrom('albums')
+  //     .selectAll('albums')
+  //     .where('albums.id', '=', id)
+  //     .where('albums.deletedAt', 'is', null)
+  //     .select(withOwner)
+  //     .select(withAlbumUsers)
+  //     .select(withSharedLink)
+  //     .$if(options.withAssets, (eb) => eb.select(withAssets))
+  //     .executeTakeFirst() as Promise<AlbumEntity | undefined>;
+  // }
+
+
+
+
   @GenerateSql({ params: [DummyValue.UUID, { withAssets: true }] })
   async getById(id: string, options: AlbumInfoOptions): Promise<AlbumEntity | undefined> {
-    return this.db
+    const album = await this.db
       .selectFrom('albums')
       .selectAll('albums')
       .where('albums.id', '=', id)
       .where('albums.deletedAt', 'is', null)
-      .select(withOwner)
-      .select(withAlbumUsers)
-      .select(withSharedLink)
-      .$if(options.withAssets, (eb) => eb.select(withAssets))
-      .executeTakeFirst() as Promise<AlbumEntity | undefined>;
-  }
+      .executeTakeFirst();
+
+    if (!album) {
+      return undefined;
+    }
+
+  return this.db
+    .selectFrom('albums')
+    .selectAll('albums')
+    .where('albums.id', '=', id)
+    .where('albums.deletedAt', 'is', null)
+    .select(withOwner)
+    .select(withAlbumUsers)
+    .select(withSharedLink)
+    .$if(options.withAssets, (eb) => eb.select((eb) => withAssets(eb, album.order)))
+    .executeTakeFirst() as Promise<AlbumEntity | undefined>;
+}
 
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID] })
   async getByAssetId(ownerId: string, assetId: string): Promise<AlbumEntity[]> {

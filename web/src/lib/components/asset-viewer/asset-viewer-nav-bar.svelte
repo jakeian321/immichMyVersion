@@ -104,57 +104,14 @@
 </script>
 
 <div
-  class="z-[1001] flex h-16 place-items-center justify-between bg-gradient-to-b from-black/40 px-3 transition-transform duration-200"
+  class="z-[1001] flex h-16 place-items-center justify-start gap-2 bg-gradient-to-b from-black/40 px-3 transition-transform duration-200"
 >
   <div class="text-white">
     {#if showCloseButton}
       <CloseAction {onClose} />
     {/if}
   </div>
-  <div class="flex gap-2 overflow-x-auto text-white" data-testid="asset-viewer-navbar-actions">
-    {#if !asset.isTrashed && $user}
-      <ShareAction {asset} />
-    {/if}
-    {#if asset.isOffline}
-      <CircleIconButton color="alert" icon={mdiAlertOutline} onclick={onShowDetail} title={$t('asset_offline')} />
-    {/if}
-    {#if asset.livePhotoVideoId}
-      {@render motionPhoto?.()}
-    {/if}
-    {#if asset.type === AssetTypeEnum.Image}
-      <CircleIconButton
-        color="opaque"
-        hideMobile={true}
-        icon={$photoZoomState && $photoZoomState.currentZoom > 1 ? mdiMagnifyMinusOutline : mdiMagnifyPlusOutline}
-        title={$t('zoom_image')}
-        onclick={onZoomImage}
-      />
-    {/if}
-    {#if canCopyImageToClipboard() && asset.type === AssetTypeEnum.Image}
-      <CircleIconButton color="opaque" icon={mdiContentCopy} title={$t('copy_image')} onclick={() => onCopyImage?.()} />
-    {/if}
-
-    {#if !isOwner && showDownloadButton}
-      <DownloadAction {asset} />
-    {/if}
-
-    {#if showDetailButton}
-      <ShowDetailAction {onShowDetail} />
-    {/if}
-
-    {#if isOwner}
-      <FavoriteAction {asset} {onAction} />
-    {/if}
-    <!-- {#if showEditorButton}
-      <CircleIconButton
-        color="opaque"
-        hideMobile={true}
-        icon={mdiImageEditOutline}
-        onclick={showEditorHandler}
-        title={$t('editor')}
-      />
-    {/if} -->
-
+  <div class="flex gap-2 overflow-x-auto text-white text-3xl" data-testid="asset-viewer-navbar-actions">
     {#if isOwner}
       <DeleteAction {asset} {onAction} {preAction} />
 
@@ -225,5 +182,120 @@
         {/if}
       </ButtonContextMenu>
     {/if}
+
+    {#if !asset.isTrashed && $user}
+      <ShareAction {asset} />
+    {/if}
+    {#if asset.isOffline}
+      <CircleIconButton color="alert" icon={mdiAlertOutline} onclick={onShowDetail} title={$t('asset_offline')} />
+    {/if}
+    {#if asset.livePhotoVideoId}
+      {@render motionPhoto?.()}
+    {/if}
+    {#if asset.type === AssetTypeEnum.Image}
+      <CircleIconButton
+        color="opaque"
+        hideMobile={true}
+        icon={$photoZoomState && $photoZoomState.currentZoom > 1 ? mdiMagnifyMinusOutline : mdiMagnifyPlusOutline}
+        title={$t('zoom_image')}
+        onclick={onZoomImage}
+      />
+    {/if}
+    {#if canCopyImageToClipboard() && asset.type === AssetTypeEnum.Image}
+      <CircleIconButton color="opaque" icon={mdiContentCopy} title={$t('copy_image')} onclick={() => onCopyImage?.()} />
+    {/if}
+
+    {#if !isOwner && showDownloadButton}
+      <DownloadAction {asset} />
+    {/if}
+
+    {#if showDetailButton}
+      <ShowDetailAction {onShowDetail} />
+    {/if}
+
+    {#if isOwner}
+      <FavoriteAction {asset} {onAction} />
+    {/if}
+    <!-- MOVING CODE TO THE TOP FOR TRASH ICON TO BE ON LEFT SIDE OF SCREEN 
+    {#if showEditorButton}
+      <CircleIconButton
+        color="opaque"
+        hideMobile={true}
+        icon={mdiImageEditOutline}
+        onclick={showEditorHandler}
+        title={$t('editor')}
+      />
+    {/if} -->
+
+    <!-- {#if isOwner}
+      <DeleteAction {asset} {onAction} {preAction} />
+
+      <ButtonContextMenu direction="left" align="top-right" color="opaque" title={$t('more')} icon={mdiDotsVertical}>
+        {#if showSlideshow}
+          <MenuOption icon={mdiPresentationPlay} text={$t('slideshow')} onClick={onPlaySlideshow} />
+        {/if}
+        {#if showDownloadButton}
+          <DownloadAction {asset} menuItem />
+        {/if}
+        {#if asset.isTrashed}
+          <RestoreAction {asset} {onAction} />
+        {:else}
+          <AddToAlbumAction {asset} {onAction} />
+          <AddToAlbumAction {asset} {onAction} shared />
+        {/if}
+
+        {#if isOwner}
+          {#if stack}
+            <UnstackAction {stack} {onAction} />
+            <KeepThisDeleteOthersAction {stack} {asset} {onAction} />
+          {/if}
+          {#if album}
+            <SetAlbumCoverAction {asset} {album} />
+          {/if}
+          {#if person}
+            <SetFeaturedPhotoAction {asset} {person} />
+          {/if}
+          {#if asset.type === AssetTypeEnum.Image}
+            <SetProfilePictureAction {asset} />
+          {/if}
+          <ArchiveAction {asset} {onAction} {preAction} />
+          <MenuOption
+            icon={mdiUpload}
+            onClick={() => openFileUploadDialog({ multiple: false, assetId: asset.id })}
+            text={$t('replace_with_upload')}
+          />
+          {#if !asset.isArchived && !asset.isTrashed}
+            <MenuOption
+              icon={mdiImageSearch}
+              onClick={() => goto(`${AppRoute.PHOTOS}?at=${stack?.primaryAssetId ?? asset.id}`)}
+              text={$t('view_in_timeline')}
+            />
+          {/if}
+          <hr />
+          <MenuOption
+            icon={mdiHeadSyncOutline}
+            onClick={() => onRunJob(AssetJobName.RefreshFaces)}
+            text={$getAssetJobName(AssetJobName.RefreshFaces)}
+          />
+          <MenuOption
+            icon={mdiDatabaseRefreshOutline}
+            onClick={() => onRunJob(AssetJobName.RefreshMetadata)}
+            text={$getAssetJobName(AssetJobName.RefreshMetadata)}
+          />
+          <MenuOption
+            icon={mdiImageRefreshOutline}
+            onClick={() => onRunJob(AssetJobName.RegenerateThumbnail)}
+            text={$getAssetJobName(AssetJobName.RegenerateThumbnail)}
+          />
+          {#if asset.type === AssetTypeEnum.Video}
+            <MenuOption
+              icon={mdiCogRefreshOutline}
+              onClick={() => onRunJob(AssetJobName.TranscodeVideo)}
+              text={$getAssetJobName(AssetJobName.TranscodeVideo)}
+            />
+          {/if}
+        {/if}
+      </ButtonContextMenu>
+    {/if} -->
   </div>
 </div>

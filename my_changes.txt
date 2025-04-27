@@ -1,0 +1,3719 @@
+++ b/i18n/en.json
+  "zoom_image": "Zoom Image",
+  "smallest_first": "Smallest first",
+  "largest_first": "Largest first"
+++ b/mobile/lib/constants/enums.dart
+
+  sizeAsc,
+  sizeDesc
+++ b/mobile/lib/entities/album.entity.dart
+      if (dto.order != null) {
+          switch (dto.order) {
+            case AssetOrder.asc:
+              a.sortOrder = SortOrder.asc;
+              break;
+            case AssetOrder.sizeAsc:
+              a.sortOrder = SortOrder.sizeAsc;
+              break;
+            case AssetOrder.sizeDesc:
+              a.sortOrder = SortOrder.sizeDesc;
+              break;
+            case AssetOrder.desc:
+            default:
+              a.sortOrder = SortOrder.desc;
+              break;
+          }
+        }
+++ b/open-api/typescript-sdk/src/fetch-client.ts
+export function getTimeBucket({ 
+    albumId, isArchived, isFavorite, isTrashed, key, order, personId, size, 
+    tagId, tagIds, timeBucket, userId, withPartners, withStacked 
+}: {
+    tagIds?: string[];  // Add this
+        tagIds,  // Add this
+export function getTimeBuckets({ 
+    albumId, isArchived, isFavorite, isTrashed, key, order, personId, size, 
+    tagId, tagIds, userId, withPartners, withStacked 
+}: {
+    tagIds?: string[];  // Add this
+        tagIds,  // Add this
+
+
+++ b/server/src/controllers/album.controller.ts
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { AssetResponseDto } from 'src/dtos/asset-response.dto';
+import { AssetOrder } from 'src/enum/asset-order.enum';
+import { Type } from 'class-transformer';
+import { IsArray, IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
+
+export class GetAlbumAssetsDto {
+  @IsOptional()
+  @IsEnum(AssetOrder)
+  order?: AssetOrder;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @Type(() => String)
+  tagIds?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isFavorite?: boolean;
+
+}
+  @Get(':id/assets')
+  @Authenticated({ permission: Permission.ALBUM_READ, sharedLink: true })
+  getAlbumAssets(
+    @Auth() auth: AuthDto,
+    @Param() { id }: UUIDParamDto,
+    @Query() filters: GetAlbumAssetsDto,
+  ): Promise<AssetResponseDto[]> {
+    console.log("Album assets request with filters:", JSON.stringify(filters));
+    return this.service.getAlbumAssets(auth, id, filters);
+  }
+
+}
+++ b/server/src/dtos/time-bucket.dto.ts
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  @ValidateUUID({ each: true, optional: true })
+  @ApiProperty({ type: 'string', isArray: true })
+  tagIds?: string[];
+
+}
+++ b/server/src/enum.ts
+  Asc = "asc",
+  Desc = "desc",
+  SizeAsc = "sizeAsc",
+  SizeDesc = "sizeDesc"
+++ b/server/src/repositories/album.repository.ts
+
+
+
+
+
+
+const withAssets = (eb: ExpressionBuilder<DB, 'albums'>, order?: string) => {
+        .orderBy(order === 'size_desc' ? 'assets.sizeInBytes' : 'assets.fileCreatedAt', 
+                order === 'size_asc' ? 'asc' : order === 'asc' ? 'asc' : 'desc')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    const album = await this.db
+      .executeTakeFirst();
+
+    if (!album) {
+      return undefined;
+    }
+
+  return this.db
+    .selectFrom('albums')
+    .selectAll('albums')
+    .where('albums.id', '=', id)
+    .where('albums.deletedAt', 'is', null)
+    .select(withOwner)
+    .select(withAlbumUsers)
+    .select(withSharedLink)
+    .$if(options.withAssets, (eb) => eb.select((eb) => withAssets(eb, album.order)))
+    .executeTakeFirst() as Promise<AlbumEntity | undefined>;
+}
+++ b/server/src/repositories/asset.repository.ts
+  tagIds?: string[];
+  tagIds?: string[]; // Add it here if not in AssetBuilderOptions
+
+
+
+
+
+
+
+
+
+
+
+
+
+  async getByAlbumId(
+    albumId: string, 
+    options: {
+      order?: AssetOrder;
+      tagIds?: string[];
+      isFavorite?: boolean;
+    } = {},
+    pagination: PaginationOptions = { take: 100 }
+  ): Paginated<AssetEntity> {
+    console.log("Album ID:", albumId);
+    console.log("Filter options:", JSON.stringify(options));
+    
+    let query = withAlbums(this.db.selectFrom('assets'), { albumId })
+      .selectAll('assets')
+      .where('deletedAt', 'is', null);
+
+    if (options.tagIds && options.tagIds.length > 0) {
+      console.log("Filtering by tag IDs:", options.tagIds);
+      query = query.where(eb => {
+        return eb.exists(
+          eb.selectFrom('asset_tags')
+            .select(1)
+            .whereRef('asset_tags.assetId', '=', 'assets.id')
+            .where('asset_tags.tagId', 'in', options.tagIds)
+        );
+      });
+    }
+    
+    if (options.isFavorite !== undefined) {
+      query = query.where('assets.isFavorite', '=', options.isFavorite);
+      console.log("SQL favorite filtering applied:", options.isFavorite);
+    }
+    
+    if (options.order === AssetOrder.NEWEST) {
+      query = query.orderBy('assets.fileCreatedAt', 'desc');
+    } else if (options.order === AssetOrder.OLDEST) {
+      query = query.orderBy('assets.fileCreatedAt', 'asc');
+    } else {
+      query = query.orderBy('assets.fileCreatedAt', 'desc');
+    }
+  
+    console.log("Generated SQL query:", query.toSQL ? query.toSQL() : "SQL query not available");
+    
+    const items = await query.execute();
+    console.log(`Found ${items.length} assets after filtering`);
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+++ b/server/src/services/album.service.ts
+
+
+
+
+import { AssetResponseDto } from 'src/dtos/asset-response.dto';
+import { GetAlbumAssetsDto } from 'src/controllers/album.controller';
+
+
+
+
+
+
+
+
+  async getAlbumAssets(auth: AuthDto, id: string, filters: GetAlbumAssetsDto): Promise<AssetResponseDto[]> {
+    await this.requireAccess({ auth, permission: Permission.ALBUM_READ, ids: [id] });
+    
+    const album = await this.findOrFail(id, { withAssets: false });
+    
+    const paginationResult = await this.assetRepository.getByAlbumId(
+      id, 
+      {
+        order: filters.order,
+        tagIds: filters.tagIds,
+        isFavorite: filters.isFavorite,
+      },
+      { take: 100 } // You might want to make this configurable
+    );
+    
+    return paginationResult.items.map(asset => mapAsset(asset, { auth }));
+  }
+  
+
+++ b/server/src/services/timeline.service.ts
+  
+  
+
+
+
+  if (dto.albumId) {
+    await this.requireAccess({ auth, permission: Permission.ALBUM_READ, ids: [dto.albumId] });
+  } else {
+    dto.userId = dto.userId || auth.user.id;
+  }
+  if (dto.userId) {
+    await this.requireAccess({ auth, permission: Permission.TIMELINE_READ, ids: [dto.userId] });
+    if (dto.isArchived !== false) {
+      await this.requireAccess({ auth, permission: Permission.ARCHIVE_READ, ids: [dto.userId] });
+  }
+  if (dto.tagId) {
+    await this.requireAccess({ auth, permission: Permission.TAG_READ, ids: [dto.tagId] });
+  }
+  
+  if (dto.tagIds && dto.tagIds.length > 0) {
+    await this.requireAccess({ auth, permission: Permission.TAG_READ, ids: dto.tagIds });
+  }
+  if (dto.withPartners) {
+    const requestedArchived = dto.isArchived === true || dto.isArchived === undefined;
+    const requestedFavorite = dto.isFavorite === true || dto.isFavorite === false;
+    const requestedTrash = dto.isTrashed === true;
+    if (requestedArchived || requestedFavorite || requestedTrash) {
+      throw new BadRequestException(
+        'withPartners is only supported for non-archived, non-trashed, non-favorited assets',
+      );
+++ b/web/src/lib/components/album-page/album-options.svelte
+<!-- <script lang="ts">
+            
+                  <!-- Allow deletion for non-owners 
+{/if} -->
+
+
+<script lang="ts">
+  import Icon from '$lib/components/elements/icon.svelte';
+  import {
+    updateAlbumInfo,
+    removeUserFromAlbum,
+    type AlbumResponseDto,
+    type UserResponseDto,
+    AssetOrder,
+    AlbumUserRole,
+    updateAlbumUser,
+  } from '@immich/sdk';
+  import { mdiArrowDownThin, mdiArrowUpThin, mdiPlus, mdiDotsVertical, mdiFileOutline } from '@mdi/js';
+  import FullScreenModal from '$lib/components/shared-components/full-screen-modal.svelte';
+  import UserAvatar from '$lib/components/shared-components/user-avatar.svelte';
+  import SettingSwitch from '$lib/components/shared-components/settings/setting-switch.svelte';
+  import SettingDropdown from '../shared-components/settings/setting-dropdown.svelte';
+  import type { RenderedOption } from '../elements/dropdown.svelte';
+  import { handleError } from '$lib/utils/handle-error';
+  import { findKey } from 'lodash-es';
+  import { t } from 'svelte-i18n';
+  import ButtonContextMenu from '$lib/components/shared-components/context-menu/button-context-menu.svelte';
+  import ConfirmDialog from '$lib/components/shared-components/dialog/confirm-dialog.svelte';
+  import { notificationController, NotificationType } from '../shared-components/notification/notification';
+  import MenuOption from '$lib/components/shared-components/context-menu/menu-option.svelte';
+
+  interface Props {
+    album: AlbumResponseDto;
+    order: AssetOrder | undefined;
+    user: UserResponseDto;
+    onChangeOrder: (order: AssetOrder) => void;
+    onClose: () => void;
+    onToggleEnabledActivity: () => void;
+    onShowSelectSharedUser: () => void;
+    onRemove: (userId: string) => void;
+    onRefreshAlbum: () => void;
+  }
+
+  let {
+    album,
+    order,
+    user,
+    onChangeOrder,
+    onClose,
+    onToggleEnabledActivity,
+    onShowSelectSharedUser,
+    onRemove,
+    onRefreshAlbum,
+  }: Props = $props();
+
+  let selectedRemoveUser: UserResponseDto | null = $state(null);
+
+  const options: Record<AssetOrder, RenderedOption> = {
+    [AssetOrder.Asc]: { icon: mdiArrowUpThin, title: $t('oldest_first') },
+    [AssetOrder.Desc]: { icon: mdiArrowDownThin, title: $t('newest_first') },
+    [AssetOrder.SizeAsc]: { icon: mdiFileOutline, title: $t('smallest_first') },
+    [AssetOrder.SizeDesc]: { icon: mdiFileOutline, title: $t('largest_first') },
+  };
+
+  let selectedOption = $derived(order ? options[order] : options[AssetOrder.Desc]);
+
+  const handleToggle = async (returnedOption: RenderedOption): Promise<void> => {
+    if (selectedOption === returnedOption) {
+      return;
+    }
+    let order: AssetOrder = AssetOrder.Desc;
+    order = findKey(options, (option) => option === returnedOption) as AssetOrder;
+
+    try {
+      await updateAlbumInfo({
+        id: album.id,
+        updateAlbumDto: {
+          order,
+        },
+      });
+      onChangeOrder(order);
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_save_album'));
+    }
+  };
+
+  const handleMenuRemove = (user: UserResponseDto): void => {
+    selectedRemoveUser = user;
+  };
+
+  const handleRemoveUser = async (): Promise<void> => {
+    if (!selectedRemoveUser) {
+      return;
+    }
+    try {
+      await removeUserFromAlbum({ id: album.id, userId: selectedRemoveUser.id });
+      onRemove(selectedRemoveUser.id);
+      notificationController.show({
+        type: NotificationType.Info,
+        message: $t('album_user_removed', { values: { user: selectedRemoveUser.name } }),
+      });
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_remove_album_users'));
+    } finally {
+      selectedRemoveUser = null;
+    }
+  };
+
+  const handleUpdateSharedUserRole = async (user: UserResponseDto, role: AlbumUserRole) => {
+    try {
+      await updateAlbumUser({ id: album.id, userId: user.id, updateAlbumUserDto: { role } });
+      const message = $t('user_role_set', {
+        values: { user: user.name, role: role == AlbumUserRole.Viewer ? $t('role_viewer') : $t('role_editor') },
+      });
+      onRefreshAlbum();
+      notificationController.show({ type: NotificationType.Info, message });
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_change_album_user_role'));
+    } finally {
+      selectedRemoveUser = null;
+    }
+  };
+</script>
+
+{#if !selectedRemoveUser}
+  <FullScreenModal title={$t('options')} {onClose}>
+    <div class="items-center justify-center">
+      <div class="py-2">
+        <h2 class="text-gray text-sm mb-2">{$t('settings').toUpperCase()}</h2>
+        <div class="grid p-2 gap-y-2">
+          {#if order}
+            <SettingDropdown
+              title={$t('display_order')}
+              options={Object.values(options)}
+              selectedOption={options[order]}
+              onToggle={handleToggle}
+            />
+            
+          {/if}
+          <SettingSwitch
+            title={$t('comments_and_likes')}
+            subtitle={$t('let_others_respond')}
+            checked={album.isActivityEnabled}
+            onToggle={onToggleEnabledActivity}
+          />
+        </div>
+      </div>
+      <div class="py-2">
+        <div class="text-gray text-sm mb-3">{$t('people').toUpperCase()}</div>
+        <div class="p-2">
+          <button type="button" class="flex items-center gap-2" onclick={onShowSelectSharedUser}>
+            <div class="rounded-full w-10 h-10 border border-gray-500 flex items-center justify-center">
+              <div><Icon path={mdiPlus} size="25" /></div>
+            </div>
+            <div>{$t('invite_people')}</div>
+          </button>
+
+          <div class="flex items-center gap-2 py-2 mt-2">
+            <div>
+              <UserAvatar {user} size="md" />
+            </div>
+            <div class="w-full">{user.name}</div>
+            <div>{$t('owner')}</div>
+          </div>
+
+          {#each album.albumUsers as { user, role } (user.id)}
+            <div class="flex items-center gap-2 py-2">
+              <div>
+                <UserAvatar {user} size="md" />
+              </div>
+              <div class="w-full">{user.name}</div>
+              {#if role === AlbumUserRole.Viewer}
+                {$t('role_viewer')}
+              {:else}
+                {$t('role_editor')}
+              {/if}
+              {#if user.id !== album.ownerId}
+                <ButtonContextMenu icon={mdiDotsVertical} size="20" title={$t('options')}>
+                  {#if role === AlbumUserRole.Viewer}
+                    <MenuOption
+                      onClick={() => handleUpdateSharedUserRole(user, AlbumUserRole.Editor)}
+                      text={$t('allow_edits')}
+                    />
+                  {:else}
+                    <MenuOption
+                      onClick={() => handleUpdateSharedUserRole(user, AlbumUserRole.Viewer)}
+                      text={$t('disallow_edits')}
+                    />
+                  {/if}
+                  <!-- Allow deletion for non-owners -->
+                  <MenuOption onClick={() => handleMenuRemove(user)} text={$t('remove')} />
+                </ButtonContextMenu>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      </div>
+    </div>
+  </FullScreenModal>
+
+{#if selectedRemoveUser}
+  <ConfirmDialog
+    title={$t('album_remove_user')}
+    prompt={$t('album_remove_user_confirmation', { values: { user: selectedRemoveUser.name } })}
+    confirmText={$t('remove_user')}
+    onConfirm={handleRemoveUser}
+    onCancel={() => (selectedRemoveUser = null)}
+  />
+{/if}
+++ b/web/src/lib/components/asset-viewer/actions/action.ts
+export type PreAction = (action: Action) => void;
+++ b/web/src/lib/components/asset-viewer/actions/delete-action.svelte
+++ b/web/src/lib/components/asset-viewer/actions/favorite-action.svelte
+++ b/web/src/lib/components/asset-viewer/actions/share-action.svelte
+<!--
+-->
+++ b/web/src/lib/components/asset-viewer/actions/show-detail-action.svelte
+
+<!--  ORIGINAL CODE I EDITED 888999888 -->
+ 
+
+
+<!-- my code 888999888
+
+<script lang="ts">
+  import { shortcut } from '$lib/actions/shortcut';
+  import CircleIconButton from '$lib/components/elements/buttons/circle-icon-button.svelte';
+  import { mdiInformationOutline } from '@mdi/js';
+  import { t } from 'svelte-i18n';
+
+  interface Props {
+    onShowDetail: () => void;
+  }
+
+  let { onShowDetail }: Props = $props();
+  
+  function handleShortcut() {
+    onShowDetail();
+    return false; // This prevents default behavior and stops propagation
+  }
+</script>
+
+<svelte:window use:shortcut={{ shortcut: { key: 'i' }, onShortcut: handleShortcut }} />
+
+<CircleIconButton color="opaque" icon={mdiInformationOutline} onclick={onShowDetail} title={$t('info')} />
+
+-->
+++ b/web/src/lib/components/asset-viewer/asset-viewer-nav-bar.svelte
+  class="z-[1001] flex h-16 place-items-center justify-start gap-2 bg-gradient-to-b from-black/40 px-3 transition-transform duration-200"
+  <div class="flex gap-2 overflow-x-auto text-white text-3xl" data-testid="asset-viewer-navbar-actions">
+    {#if isOwner}
+      <DeleteAction {asset} {onAction} {preAction} />
+
+      <ButtonContextMenu direction="left" align="top-right" color="opaque" title={$t('more')} icon={mdiDotsVertical}>
+        {#if showSlideshow}
+          <MenuOption icon={mdiPresentationPlay} text={$t('slideshow')} onClick={onPlaySlideshow} />
+        {/if}
+        {#if showDownloadButton}
+          <DownloadAction {asset} menuItem />
+        {/if}
+        {#if asset.isTrashed}
+          <RestoreAction {asset} {onAction} />
+        {:else}
+          <AddToAlbumAction {asset} {onAction} />
+          <AddToAlbumAction {asset} {onAction} shared />
+        {/if}
+
+        {#if isOwner}
+          {#if stack}
+            <UnstackAction {stack} {onAction} />
+            <KeepThisDeleteOthersAction {stack} {asset} {onAction} />
+          {/if}
+          {#if album}
+            <SetAlbumCoverAction {asset} {album} />
+          {/if}
+          {#if person}
+            <SetFeaturedPhotoAction {asset} {person} />
+          {/if}
+          {#if asset.type === AssetTypeEnum.Image}
+            <SetProfilePictureAction {asset} />
+          {/if}
+          <ArchiveAction {asset} {onAction} {preAction} />
+          <MenuOption
+            icon={mdiUpload}
+            onClick={() => openFileUploadDialog({ multiple: false, assetId: asset.id })}
+            text={$t('replace_with_upload')}
+          />
+          {#if !asset.isArchived && !asset.isTrashed}
+            <MenuOption
+              icon={mdiImageSearch}
+              onClick={() => goto(`${AppRoute.PHOTOS}?at=${stack?.primaryAssetId ?? asset.id}`)}
+              text={$t('view_in_timeline')}
+            />
+          {/if}
+          <hr />
+          <MenuOption
+            icon={mdiHeadSyncOutline}
+            onClick={() => onRunJob(AssetJobName.RefreshFaces)}
+            text={$getAssetJobName(AssetJobName.RefreshFaces)}
+          />
+          <MenuOption
+            icon={mdiDatabaseRefreshOutline}
+            onClick={() => onRunJob(AssetJobName.RefreshMetadata)}
+            text={$getAssetJobName(AssetJobName.RefreshMetadata)}
+          />
+          <MenuOption
+            icon={mdiImageRefreshOutline}
+            onClick={() => onRunJob(AssetJobName.RegenerateThumbnail)}
+            text={$getAssetJobName(AssetJobName.RegenerateThumbnail)}
+          />
+          {#if asset.type === AssetTypeEnum.Video}
+            <MenuOption
+              icon={mdiCogRefreshOutline}
+              onClick={() => onRunJob(AssetJobName.TranscodeVideo)}
+              text={$getAssetJobName(AssetJobName.TranscodeVideo)}
+            />
+          {/if}
+        {/if}
+      </ButtonContextMenu>
+    {/if}
+
+    <!-- MOVING CODE TO THE TOP FOR TRASH ICON TO BE ON LEFT SIDE OF SCREEN 
+    {#if showEditorButton}
+    <!-- {#if isOwner}
+    {/if} -->
+++ b/web/src/lib/components/asset-viewer/asset-viewer.svelte
+
+    <!-- commented out this 888999888 and added line 461 <div class="z-[1001] my-auto column-span-1 col-start-1 row-span-full row-start-1 justify-self-start"> -->
+      <div class="z-[1001] fixed left-[0%] bottom-[30%]">  
+        <PreviousAssetAction onPreviousAsset={() => navigateAsset('previous')} />
+    <!-- <div class="z-[1001] my-auto col-span-1 col-start-4 row-span-full row-start-1 justify-self-end"> -->
+      <div class="z-[1001] fixed left-[20%] bottom-[88%]">  
+        <NextAssetAction onNextAsset={() => navigateAsset('next')} />
+++ b/web/src/lib/components/asset-viewer/detail-panel-tags.svelte
+
+
+
+
+++ b/web/src/lib/components/asset-viewer/video-native-viewer.svelte
+<!-- <script lang="ts">
+</div> 
+
+
+
+
+I added below code which works for now 
+-->
+
+<!--
+<script lang="ts">
+  import LoadingSpinner from '$lib/components/shared-components/loading-spinner.svelte';
+  import { loopVideo as loopVideoPreference, videoViewerMuted, videoViewerVolume } from '$lib/stores/preferences.store';
+  import { getAssetPlaybackUrl, getAssetThumbnailUrl } from '$lib/utils';
+  import { handleError } from '$lib/utils/handle-error';
+  import { AssetMediaSize } from '@immich/sdk';
+  import { onDestroy, onMount } from 'svelte';
+  import { swipe } from 'svelte-gestures';
+  import type { SwipeCustomEvent } from 'svelte-gestures';
+  import { fade } from 'svelte/transition';
+  import { t } from 'svelte-i18n';
+  import { isFaceEditMode } from '$lib/stores/face-edit.svelte';
+  import FaceEditor from '$lib/components/asset-viewer/face-editor/face-editor.svelte';
+  
+  import Icon from '$lib/components/elements/icon.svelte';
+  import TagAssetForm from '$lib/components/forms/tag-asset-form.svelte';
+  import Portal from '$lib/components/shared-components/portal/portal.svelte';
+  import { AppRoute } from '$lib/constants';
+  import { isSharedLink } from '$lib/utils';
+  import { removeTag, tagAssets } from '$lib/utils/asset-utils';
+  import { getAssetInfo, type AssetResponseDto } from '@immich/sdk';
+  import { mdiClose, mdiPlus } from '@mdi/js';
+
+  interface Props {
+    assetId: string;
+    loopVideo: boolean;
+    cacheKey: string | null;
+    skipPercentage?: number; // Skip percentage of total video duration
+    maxSkipSeconds?: number; // Maximum skip time in seconds
+    minSkipSeconds?: number; // Minimum skip time in seconds
+    asset?: AssetResponseDto; // Added asset property
+    isOwner?: boolean; // Added isOwner property
+    onPreviousAsset?: () => void;
+    onNextAsset?: () => void;
+    onVideoEnded?: () => void;
+    onVideoStarted?: () => void;
+    onClose?: () => void;
+  }
+
+  let {
+    assetId,
+    loopVideo,
+    cacheKey,
+    skipPercentage = 0.2, // Default to 20% of video duration
+    maxSkipSeconds = 2, // Default max skip of 10 seconds
+    minSkipSeconds = 2, // Default min skip of 2 seconds
+    asset = $bindable(),
+    isOwner = true,
+    onPreviousAsset = () => {},
+    onNextAsset = () => {},
+    onVideoEnded = () => {},
+    onVideoStarted = () => {},
+    onClose = () => {},
+  }: Props = $props();
+
+  let videoPlayer: HTMLVideoElement | undefined = $state();
+  let isLoading = $state(true);
+  let assetFileUrl = $state('');
+  let forceMuted = $state(false);
+  let isScrubbing = $state(false);
+
+  let tags = $derived(asset?.tags || []);
+  let isTagFormOpen = $state(false);
+
+  onMount(async () => {
+    if (videoPlayer) {
+      assetFileUrl = getAssetPlaybackUrl({ id: assetId, cacheKey });
+      forceMuted = false;
+      videoPlayer.load();
+    }
+    
+    if (!asset?.id && assetId) {
+      try {
+        asset = await getAssetInfo({ id: assetId });
+      } catch (error) {
+        handleError(error, $t('errors.unable_to_load_asset_info'));
+      }
+    }
+  });
+
+  onDestroy(() => {
+    if (videoPlayer) {
+      videoPlayer.src = '';
+    }
+  });
+
+  const handleCanPlay = async (video: HTMLVideoElement) => {
+    try {
+      if (!video.paused && !isScrubbing) {
+        await video.play();
+        onVideoStarted();
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'NotAllowedError' && !forceMuted) {
+        await tryForceMutedPlay(video);
+        return;
+      }
+
+      handleError(error, $t('errors.unable_to_play_video'));
+    } finally {
+      isLoading = false;
+    }
+  };
+
+  const tryForceMutedPlay = async (video: HTMLVideoElement) => {
+    try {
+      video.muted = true;
+      await handleCanPlay(video);
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_play_video'));
+    }
+  };
+
+  const onSwipe = (event: SwipeCustomEvent) => {
+    if (event.detail.direction === 'left') {
+      onNextAsset();
+    }
+    if (event.detail.direction === 'right') {
+      onPreviousAsset();
+    }
+  };
+
+  const calculateSkipTime = () => {
+    if (!videoPlayer) return 0;
+    
+    let skipTime = videoPlayer.duration * skipPercentage;
+    
+    if (skipTime > maxSkipSeconds) {
+      skipTime = maxSkipSeconds;
+    } else if (skipTime < minSkipSeconds) {
+      skipTime = minSkipSeconds;
+    }
+    
+    return skipTime;
+  };
+
+  const skipForward = () => {
+    if (!videoPlayer) return;
+    
+    const skipTime = calculateSkipTime();
+    const newTime = Math.min(videoPlayer.currentTime + skipTime, videoPlayer.duration);
+    videoPlayer.currentTime = newTime;
+  };
+
+  const skipBackward = () => {
+    if (!videoPlayer) return;
+    
+    const skipTime = calculateSkipTime();
+    const newTime = Math.max(videoPlayer.currentTime - skipTime, 0);
+    videoPlayer.currentTime = newTime;
+  };
+
+  const handleKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'ArrowRight') {
+      skipForward();
+      event.preventDefault();
+    }
+    else if (event.key === 'ArrowLeft') {
+      skipBackward();
+      event.preventDefault();
+    }
+  };
+
+  const handleAddTag = () => (isTagFormOpen = true);
+
+  const handleCancelTag = () => (isTagFormOpen = false);
+
+  const handleTag = async (tagIds: string[]) => {
+    if (!asset?.id) return;
+    
+    const ids = await tagAssets({ tagIds, assetIds: [asset.id], showNotification: false });
+    if (ids) {
+      isTagFormOpen = false;
+    }
+
+    asset = await getAssetInfo({ id: asset.id });
+  };
+
+  const handleRemoveTag = async (tagId: string) => {
+    if (!asset?.id) return;
+    
+    const ids = await removeTag({ tagIds: [tagId], assetIds: [asset.id], showNotification: false });
+    if (ids) {
+      asset = await getAssetInfo({ id: asset.id });
+    }
+  };
+
+  let containerWidth = $state(0);
+  let containerHeight = $state(0);
+
+  $effect(() => {
+    if (isFaceEditMode.value) {
+      videoPlayer?.pause();
+    }
+  });
+</script>
+
+<div
+  transition:fade={{ duration: 150 }}
+  class="flex flex-col h-full select-none"
+>
+  <div 
+    class="flex-grow relative flex place-content-center place-items-center"
+    bind:clientWidth={containerWidth}
+    bind:clientHeight={containerHeight}
+    onkeydown={handleKeydown}
+    tabindex="0"
+  >
+    <video
+      bind:this={videoPlayer}
+      loop={$loopVideoPreference && loopVideo}
+      autoplay
+      playsinline
+      controls
+      class="h-full object-contain"
+      use:swipe={() => ({})}
+      onswipe={onSwipe}
+      oncanplay={(e) => handleCanPlay(e.currentTarget)}
+      onended={onVideoEnded}
+      onvolumechange={(e) => {
+        if (!forceMuted) {
+          $videoViewerMuted = e.currentTarget.muted;
+        }
+      }}
+      onseeking={() => (isScrubbing = true)}
+      onseeked={() => (isScrubbing = false)}
+      onplaying={(e) => {
+        e.currentTarget.focus();
+      }}
+      onclose={() => onClose()}
+      muted={forceMuted || $videoViewerMuted}
+      bind:volume={$videoViewerVolume}
+      poster={getAssetThumbnailUrl({ id: assetId, size: AssetMediaSize.Preview, cacheKey })}
+      src={assetFileUrl}
+    >
+    </video>
+
+    {#if isLoading}
+      <div class="absolute flex place-content-center place-items-center">
+        <LoadingSpinner />
+      </div>
+    {/if}
+
+    {#if isFaceEditMode.value}
+      <FaceEditor htmlElement={videoPlayer} {containerWidth} {containerHeight} {assetId} />
+    {/if}
+
+ <div class="z-[1001] fixed left-0 bottom-[65%]">
+  <button 
+    class="bg-transparent text-white rounded-full p-2"
+    onclick={skipBackward}
+  >
+    ⏪ Skip
+  </button>
+</div>
+
+<div class="z-[1001] fixed left-0 bottom-[88%]">
+  <button 
+    class="bg-transparent text-white rounded-full p-2"
+    onclick={skipForward}
+  >
+    Skip ⏩
+  </button>
+</div>
+  </div>
+
+  {#if isOwner && asset?.id && !isSharedLink()}
+    <section class="px-4 mt-4 pb-4">
+      <div class="flex h-10 w-full items-center justify-between text-sm">
+        <h2>{$t('tags').toUpperCase()}</h2>
+      </div>
+      <section class="flex flex-wrap pt-2 gap-1" data-testid="detail-panel-tags">
+        {#each tags as tag (tag.id)}
+          <div class="flex group transition-all">
+            <a
+              class="inline-block h-min whitespace-nowrap pl-3 pr-1 group-hover:pl-3 py-1 text-center align-baseline leading-none text-gray-100 dark:text-immich-dark-gray bg-immich-primary dark:bg-immich-dark-primary rounded-tl-full rounded-bl-full hover:bg-immich-primary/80 dark:hover:bg-immich-dark-primary/80 transition-all"
+              href={encodeURI(`${AppRoute.TAGS}/?path=${tag.value}`)}
+            >
+              <p class="text-sm">
+                {tag.value}
+              </p>
+            </a>
+
+            <button
+              type="button"
+              class="text-gray-100 dark:text-immich-dark-gray bg-immich-primary/95 dark:bg-immich-dark-primary/95 rounded-tr-full rounded-br-full place-items-center place-content-center pr-2 pl-1 py-1 hover:bg-immich-primary/80 dark:hover:bg-immich-dark-primary/80 transition-all"
+              title="Remove tag"
+              onclick={() => handleRemoveTag(tag.id)}
+            >
+              <Icon path={mdiClose} />
+            </button>
+          </div>
+        {/each}
+        <button
+          type="button"
+          class="rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200 flex place-items-center place-content-center gap-1 px-2 py-1"
+          title="Add tag"
+          onclick={handleAddTag}
+        >
+          <span class="text-sm px-1 flex place-items-center place-content-center gap-1"><Icon path={mdiPlus} />Add</span>
+        </button>
+      </section>
+    </section>
+  {/if}
+
+{#if isTagFormOpen}
+  <Portal>
+    <TagAssetForm onTag={(tagsIds) => handleTag(tagsIds)} onCancel={handleCancelTag} />
+  </Portal>
+{/if}
+
+stopped here-->
+
+
+<!--
+<script lang="ts">
+  import LoadingSpinner from '$lib/components/shared-components/loading-spinner.svelte';
+  import { loopVideo as loopVideoPreference, videoViewerMuted, videoViewerVolume } from '$lib/stores/preferences.store';
+  import { getAssetPlaybackUrl, getAssetThumbnailUrl } from '$lib/utils';
+  import { handleError } from '$lib/utils/handle-error';
+  import { AssetMediaSize } from '@immich/sdk';
+  import { onDestroy, onMount } from 'svelte';
+  import { swipe } from 'svelte-gestures';
+  import type { SwipeCustomEvent } from 'svelte-gestures';
+  import { fade } from 'svelte/transition';
+  import { t } from 'svelte-i18n';
+  import { isFaceEditMode } from '$lib/stores/face-edit.svelte';
+  import FaceEditor from '$lib/components/asset-viewer/face-editor/face-editor.svelte';
+  
+  import Icon from '$lib/components/elements/icon.svelte';
+  import TagAssetForm from '$lib/components/forms/tag-asset-form.svelte';
+  import Portal from '$lib/components/shared-components/portal/portal.svelte';
+  import { AppRoute } from '$lib/constants';
+  import { isSharedLink } from '$lib/utils';
+  import { removeTag, tagAssets } from '$lib/utils/asset-utils';
+  import { getAssetInfo, type AssetResponseDto } from '@immich/sdk';
+  import { mdiClose, mdiPlus } from '@mdi/js';
+
+  interface Props {
+    assetId: string;
+    loopVideo: boolean;
+    cacheKey: string | null;
+    skipPercentage?: number; // Skip percentage of total video duration
+    maxSkipSeconds?: number; // Maximum skip time in seconds
+    minSkipSeconds?: number; // Minimum skip time in seconds
+    asset?: AssetResponseDto; // Added asset property
+    isOwner?: boolean; // Added isOwner property
+    onPreviousAsset?: () => void;
+    onNextAsset?: () => void;
+    onVideoEnded?: () => void;
+    onVideoStarted?: () => void;
+    onClose?: () => void;
+  }
+
+  let {
+    assetId,
+    loopVideo,
+    cacheKey,
+    skipPercentage = 0.2, // Default to 20% of video duration
+    maxSkipSeconds = 2, // Default max skip of 10 seconds
+    minSkipSeconds = 2, // Default min skip of 2 seconds
+    asset = $bindable(),
+    isOwner = true,
+    onPreviousAsset = () => {},
+    onNextAsset = () => {},
+    onVideoEnded = () => {},
+    onVideoStarted = () => {},
+    onClose = () => {},
+  }: Props = $props();
+
+  let videoPlayer: HTMLVideoElement | undefined = $state();
+  let isLoading = $state(true);
+  let assetFileUrl = $state('');
+  let forceMuted = $state(false);
+  let isScrubbing = $state(false);
+
+  let tags = $derived(asset?.tags || []);
+  let isTagFormOpen = $state(false);
+  let showTagsPanel = $state(false);
+
+  onMount(async () => {
+    if (videoPlayer) {
+      assetFileUrl = getAssetPlaybackUrl({ id: assetId, cacheKey });
+      forceMuted = false;
+      videoPlayer.load();
+    }
+    
+    if (!asset?.id && assetId) {
+      try {
+        asset = await getAssetInfo({ id: assetId });
+      } catch (error) {
+        handleError(error, $t('errors.unable_to_load_asset_info'));
+      }
+    }
+  });
+
+  onDestroy(() => {
+    if (videoPlayer) {
+      videoPlayer.src = '';
+    }
+  });
+
+  const handleCanPlay = async (video: HTMLVideoElement) => {
+    try {
+      if (!video.paused && !isScrubbing) {
+        await video.play();
+        onVideoStarted();
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'NotAllowedError' && !forceMuted) {
+        await tryForceMutedPlay(video);
+        return;
+      }
+
+      handleError(error, $t('errors.unable_to_play_video'));
+    } finally {
+      isLoading = false;
+    }
+  };
+
+  const tryForceMutedPlay = async (video: HTMLVideoElement) => {
+    try {
+      video.muted = true;
+      await handleCanPlay(video);
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_play_video'));
+    }
+  };
+
+  const onSwipe = (event: SwipeCustomEvent) => {
+    if (event.detail.direction === 'left') {
+      onNextAsset();
+    }
+    if (event.detail.direction === 'right') {
+      onPreviousAsset();
+    }
+  };
+
+  const calculateSkipTime = () => {
+    if (!videoPlayer) return 0;
+    
+    let skipTime = videoPlayer.duration * skipPercentage;
+    
+    if (skipTime > maxSkipSeconds) {
+      skipTime = maxSkipSeconds;
+    } else if (skipTime < minSkipSeconds) {
+      skipTime = minSkipSeconds;
+    }
+    
+    return skipTime;
+  };
+
+  const skipForward = () => {
+    if (!videoPlayer) return;
+    
+    const skipTime = calculateSkipTime();
+    const newTime = Math.min(videoPlayer.currentTime + skipTime, videoPlayer.duration);
+    videoPlayer.currentTime = newTime;
+  };
+
+  const skipBackward = () => {
+    if (!videoPlayer) return;
+    
+    const skipTime = calculateSkipTime();
+    const newTime = Math.max(videoPlayer.currentTime - skipTime, 0);
+    videoPlayer.currentTime = newTime;
+  };
+
+  const handleKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'ArrowRight') {
+      skipForward();
+      event.preventDefault();
+    }
+    else if (event.key === 'ArrowLeft') {
+      skipBackward();
+      event.preventDefault();
+    }
+  };
+
+  const toggleTagsPanel = () => {
+    showTagsPanel = !showTagsPanel;
+  };
+
+  const handleAddTag = () => (isTagFormOpen = true);
+
+  const handleCancelTag = () => (isTagFormOpen = false);
+
+  const handleTag = async (tagIds: string[]) => {
+    if (!asset?.id) return;
+    
+    const ids = await tagAssets({ tagIds, assetIds: [asset.id], showNotification: false });
+    if (ids) {
+      isTagFormOpen = false;
+    }
+
+    asset = await getAssetInfo({ id: asset.id });
+  };
+
+  const handleRemoveTag = async (tagId: string) => {
+    if (!asset?.id) return;
+    
+    const ids = await removeTag({ tagIds: [tagId], assetIds: [asset.id], showNotification: false });
+    if (ids) {
+      asset = await getAssetInfo({ id: asset.id });
+    }
+  };
+
+  let containerWidth = $state(0);
+  let containerHeight = $state(0);
+
+  $effect(() => {
+    if (isFaceEditMode.value) {
+      videoPlayer?.pause();
+    }
+  });
+</script>
+
+<div
+  transition:fade={{ duration: 150 }}
+  class="flex flex-col h-full select-none"
+>
+  <div 
+    class="flex-grow relative flex place-content-center place-items-center"
+    bind:clientWidth={containerWidth}
+    bind:clientHeight={containerHeight}
+    onkeydown={handleKeydown}
+    tabindex="0"
+  >
+    <video
+      bind:this={videoPlayer}
+      loop={$loopVideoPreference && loopVideo}
+      autoplay
+      playsinline
+      controls
+      class="h-full object-contain"
+      use:swipe={() => ({})}
+      onswipe={onSwipe}
+      oncanplay={(e) => handleCanPlay(e.currentTarget)}
+      onended={onVideoEnded}
+      onvolumechange={(e) => {
+        if (!forceMuted) {
+          $videoViewerMuted = e.currentTarget.muted;
+        }
+      }}
+      onseeking={() => (isScrubbing = true)}
+      onseeked={() => (isScrubbing = false)}
+      onplaying={(e) => {
+        e.currentTarget.focus();
+      }}
+      onclose={() => onClose()}
+      muted={forceMuted || $videoViewerMuted}
+      bind:volume={$videoViewerVolume}
+      poster={getAssetThumbnailUrl({ id: assetId, size: AssetMediaSize.Preview, cacheKey })}
+      src={assetFileUrl}
+    >
+    </video>
+
+    {#if isLoading}
+      <div class="absolute flex place-content-center place-items-center">
+        <LoadingSpinner />
+      </div>
+    {/if}
+
+    {#if isFaceEditMode.value}
+      <FaceEditor htmlElement={videoPlayer} {containerWidth} {containerHeight} {assetId} />
+    {/if}
+
+    <!-- Skip Backward Button  
+    <div class="z-[1001] fixed left-0 bottom-[35%]">
+      <button 
+        class="bg-transparent text-white rounded-full p-2"
+        onclick={skipBackward}
+      >
+        ⏪ Skip
+      </button>
+    </div>
+
+    <!-- Skip Forward Button
+    <div class="z-[1001] fixed left-0 bottom-[88%]">
+      <button 
+        class="bg-transparent text-white rounded-full p-2"
+        onclick={skipForward}
+      >
+        Skip ⏩
+      </button>
+    </div>
+
+    <!-- Tag Button and Panel (positioned at bottom-[78%]) 
+    {#if isOwner && asset?.id && !isSharedLink()}
+      <div class="z-[1001] fixed left-0 bottom-[78%]">
+        <div class="flex flex-col">
+          <!-- Always visible add tag button 
+          <button
+            type="button"
+            class="bg-immich-primary text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1 hover:bg-immich-primary/80 transition-all"
+            title="Add tag"
+            onclick={handleAddTag}
+          >
+            <Icon path={mdiPlus} size="0.75rem" />
+            <span class="text-xs">Add Tag</span>
+          </button>
+          
+          <!-- Toggle for existing tags 
+          {#if tags.length > 0}
+            <button 
+              type="button"
+              class="bg-black bg-opacity-40 text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1"
+              title="Toggle Tags"
+              onclick={toggleTagsPanel}
+            >
+              <span class="text-xs">View Tags {showTagsPanel ? '▲' : '▼'}</span>
+            </button>
+          {/if}
+          
+          {#if showTagsPanel && tags.length > 0}
+            <div class="bg-black bg-opacity-40 rounded p-2 max-w-[300px]">
+              <div class="flex flex-wrap gap-1">
+                {#each tags as tag (tag.id)}
+                  <div class="flex group transition-all">
+                    <a
+                      class="inline-block h-min whitespace-nowrap pl-2 pr-1 py-0.5 text-center align-baseline leading-none text-gray-100 bg-immich-primary rounded-tl-full rounded-bl-full hover:bg-immich-primary/80 transition-all"
+                      href={encodeURI(`${AppRoute.TAGS}/?path=${tag.value}`)}
+                    >
+                      <p class="text-xs">
+                        {tag.value}
+                      </p>
+                    </a>
+
+                    <button
+                      type="button"
+                      class="text-gray-100 bg-immich-primary/95 rounded-tr-full rounded-br-full place-items-center place-content-center pr-1 pl-0.5 py-0.5 hover:bg-immich-primary/80 transition-all"
+                      title="Remove tag"
+                      onclick={() => handleRemoveTag(tag.id)}
+                    >
+                      <Icon path={mdiClose} size="0.75rem" />
+                    </button>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
+      </div>
+    {/if}
+  </div>
+</div>
+
+{#if isTagFormOpen}
+  <Portal>
+    <TagAssetForm onTag={(tagsIds) => handleTag(tagsIds)} onCancel={handleCancelTag} />
+  </Portal>
+{/if}
+
+-->
+
+
+<!-- 3rd edition of the same code but better functionlity
+
+<script lang="ts">
+  import LoadingSpinner from '$lib/components/shared-components/loading-spinner.svelte';
+  import { loopVideo as loopVideoPreference, videoViewerMuted, videoViewerVolume } from '$lib/stores/preferences.store';
+  import { getAssetPlaybackUrl, getAssetThumbnailUrl } from '$lib/utils';
+  import { handleError } from '$lib/utils/handle-error';
+  import { AssetMediaSize } from '@immich/sdk';
+  import { onDestroy, onMount } from 'svelte';
+  import { swipe } from 'svelte-gestures';
+  import type { SwipeCustomEvent } from 'svelte-gestures';
+  import { fade } from 'svelte/transition';
+  import { t } from 'svelte-i18n';
+  import { isFaceEditMode } from '$lib/stores/face-edit.svelte';
+  import FaceEditor from '$lib/components/asset-viewer/face-editor/face-editor.svelte';
+  
+  import Icon from '$lib/components/elements/icon.svelte';
+  import TagAssetForm from '$lib/components/forms/tag-asset-form.svelte';
+  import Portal from '$lib/components/shared-components/portal/portal.svelte';
+  import { AppRoute } from '$lib/constants';
+  import { isSharedLink } from '$lib/utils';
+  import { removeTag, tagAssets } from '$lib/utils/asset-utils';
+  import { getAssetInfo, type AssetResponseDto } from '@immich/sdk';
+  import { mdiClose, mdiPlus } from '@mdi/js';
+
+  interface Props {
+    assetId: string;
+    loopVideo: boolean;
+    cacheKey: string | null;
+    skipPercentage?: number; // Skip percentage of total video duration
+    maxSkipSeconds?: number; // Maximum skip time in seconds
+    minSkipSeconds?: number; // Minimum skip time in seconds
+    asset?: AssetResponseDto; // Added asset property
+    isOwner?: boolean; // Added isOwner property
+    onPreviousAsset?: () => void;
+    onNextAsset?: () => void;
+    onVideoEnded?: () => void;
+    onVideoStarted?: () => void;
+    onClose?: () => void;
+  }
+
+  let {
+    assetId,
+    loopVideo,
+    cacheKey,
+    skipPercentage = 0.2, // Default to 20% of video duration
+    maxSkipSeconds = 2, // Default max skip of 10 seconds
+    minSkipSeconds = 2, // Default min skip of 2 seconds
+    asset = $bindable(),
+    isOwner = true,
+    onPreviousAsset = () => {},
+    onNextAsset = () => {},
+    onVideoEnded = () => {},
+    onVideoStarted = () => {},
+    onClose = () => {},
+  }: Props = $props();
+
+  let videoPlayer: HTMLVideoElement | undefined = $state();
+  let isLoading = $state(true);
+  let assetFileUrl = $state('');
+  let forceMuted = $state(false);
+  let isScrubbing = $state(false);
+
+  let skipForwardInterval: number | null = $state(null);
+  let skipBackwardInterval: number | null = $state(null);
+  let skipIntervalDelay = 450; // Milliseconds between skips when holding
+
+  let tags = $derived(asset?.tags || []);
+  let isTagFormOpen = $state(false);
+  let showTagsPanel = $state(false);
+
+  onMount(async () => {
+    if (videoPlayer) {
+      assetFileUrl = getAssetPlaybackUrl({ id: assetId, cacheKey });
+      forceMuted = false;
+      videoPlayer.load();
+    }
+    
+    if (!asset?.id && assetId) {
+      try {
+        asset = await getAssetInfo({ id: assetId });
+      } catch (error) {
+        handleError(error, $t('errors.unable_to_load_asset_info'));
+      }
+    }
+  });
+
+  onDestroy(() => {
+    if (videoPlayer) {
+      videoPlayer.src = '';
+    }
+    clearHoldIntervals();
+  });
+
+  const clearHoldIntervals = () => {
+    if (skipForwardInterval) {
+      clearInterval(skipForwardInterval);
+      skipForwardInterval = null;
+    }
+    if (skipBackwardInterval) {
+      clearInterval(skipBackwardInterval);
+      skipBackwardInterval = null;
+    }
+  };
+
+  const handleCanPlay = async (video: HTMLVideoElement) => {
+    try {
+      if (!video.paused && !isScrubbing) {
+        await video.play();
+        onVideoStarted();
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'NotAllowedError' && !forceMuted) {
+        await tryForceMutedPlay(video);
+        return;
+      }
+
+      handleError(error, $t('errors.unable_to_play_video'));
+    } finally {
+      isLoading = false;
+    }
+  };
+
+  const tryForceMutedPlay = async (video: HTMLVideoElement) => {
+    try {
+      video.muted = true;
+      await handleCanPlay(video);
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_play_video'));
+    }
+  };
+
+  const onSwipe = (event: SwipeCustomEvent) => {
+    if (event.detail.direction === 'left') {
+      onNextAsset();
+    }
+    if (event.detail.direction === 'right') {
+      onPreviousAsset();
+    }
+  };
+
+  const calculateSkipTime = () => {
+    if (!videoPlayer) return 0;
+    
+    let skipTime = videoPlayer.duration * skipPercentage;
+    
+    if (skipTime > maxSkipSeconds) {
+      skipTime = maxSkipSeconds;
+    } else if (skipTime < minSkipSeconds) {
+      skipTime = minSkipSeconds;
+    }
+    
+    return skipTime;
+  };
+
+  const skipForward = () => {
+    if (!videoPlayer) return;
+    
+    const skipTime = calculateSkipTime();
+    const newTime = Math.min(videoPlayer.currentTime + skipTime, videoPlayer.duration);
+    videoPlayer.currentTime = newTime;
+  };
+
+  const skipBackward = () => {
+    if (!videoPlayer) return;
+    
+    const skipTime = calculateSkipTime();
+    const newTime = Math.max(videoPlayer.currentTime - skipTime, 0);
+    videoPlayer.currentTime = newTime;
+  };
+
+  const startForwardSkip = () => {
+    if (skipForwardInterval) return; // Already skipping
+    
+    skipForward();
+    
+    skipForwardInterval = setInterval(() => {
+      skipForward();
+    }, skipIntervalDelay);
+  };
+
+  const stopForwardSkip = () => {
+    if (skipForwardInterval) {
+      clearInterval(skipForwardInterval);
+      skipForwardInterval = null;
+    }
+  };
+
+  const startBackwardSkip = () => {
+    if (skipBackwardInterval) return; // Already skipping
+    
+    skipBackward();
+    
+    skipBackwardInterval = setInterval(() => {
+      skipBackward();
+    }, skipIntervalDelay);
+  };
+
+  const stopBackwardSkip = () => {
+    if (skipBackwardInterval) {
+      clearInterval(skipBackwardInterval);
+      skipBackwardInterval = null;
+    }
+  };
+
+  const handleKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'ArrowRight') {
+      skipForward();
+      event.preventDefault();
+    }
+    else if (event.key === 'ArrowLeft') {
+      skipBackward();
+      event.preventDefault();
+    }
+  };
+
+  const toggleTagsPanel = () => {
+    showTagsPanel = !showTagsPanel;
+  };
+
+  const handleAddTag = () => (isTagFormOpen = true);
+
+  const handleCancelTag = () => (isTagFormOpen = false);
+
+  const handleTag = async (tagIds: string[]) => {
+    if (!asset?.id) return;
+    
+    const ids = await tagAssets({ tagIds, assetIds: [asset.id], showNotification: false });
+    if (ids) {
+      isTagFormOpen = false;
+    }
+
+    asset = await getAssetInfo({ id: asset.id });
+  };
+
+  const handleRemoveTag = async (tagId: string) => {
+    if (!asset?.id) return;
+    
+    const ids = await removeTag({ tagIds: [tagId], assetIds: [asset.id], showNotification: false });
+    if (ids) {
+      asset = await getAssetInfo({ id: asset.id });
+    }
+  };
+
+  let containerWidth = $state(0);
+  let containerHeight = $state(0);
+
+  $effect(() => {
+    if (isFaceEditMode.value) {
+      videoPlayer?.pause();
+    }
+  });
+</script>
+
+<div
+  transition:fade={{ duration: 150 }}
+  class="flex flex-col h-full select-none"
+>
+  <div 
+    class="flex-grow relative flex place-content-center place-items-center"
+    bind:clientWidth={containerWidth}
+    bind:clientHeight={containerHeight}
+    onkeydown={handleKeydown}
+    tabindex="0"
+  >
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  <video
+  bind:this={videoPlayer}
+  loop={$loopVideoPreference && loopVideo}
+  autoplay
+  playsinline
+  class="h-full object-contain"
+  use:swipe={() => ({})}
+  onswipe={onSwipe}
+  oncanplay={(e) => handleCanPlay(e.currentTarget)}
+  onended={onVideoEnded}
+  onvolumechange={(e) => {
+    if (!forceMuted) {
+      $videoViewerMuted = e.currentTarget.muted;
+    }
+  }}
+  onseeking={() => (isScrubbing = true)}
+  onseeked={() => (isScrubbing = false)}
+  onplaying={(e) => {
+    e.currentTarget.focus();
+  }}
+  onclose={() => onClose()}
+  muted={forceMuted || $videoViewerMuted}
+  bind:volume={$videoViewerVolume}
+  poster={getAssetThumbnailUrl({ id: assetId, size: AssetMediaSize.Preview, cacheKey })}
+  src={assetFileUrl}
+>
+</video>
+
+
+
+
+
+    {#if isLoading}
+      <div class="absolute flex place-content-center place-items-center">
+        <LoadingSpinner />
+      </div>
+    {/if}
+
+    {#if isFaceEditMode.value}
+      <FaceEditor htmlElement={videoPlayer} {containerWidth} {containerHeight} {assetId} />
+    {/if}
+
+    <!-- Skip Backward Button with hold functionality 
+    <div class="z-[1001] fixed left-0 bottom-[35%]">
+      <button 
+        class="bg-transparent text-white rounded-full p-2"
+        onmousedown={startBackwardSkip}
+        onmouseup={stopBackwardSkip}
+        onmouseleave={stopBackwardSkip}
+        ontouchstart={startBackwardSkip}
+        ontouchend={stopBackwardSkip}
+      >
+        ⏪ Skip
+      </button>
+    </div>
+
+    <!-- Skip Forward Button with hold functionality 
+    <div class="z-[1001] fixed left-0 bottom-[88%]">
+      <button 
+        class="bg-transparent text-white rounded-full p-2"
+        onmousedown={startForwardSkip}
+        onmouseup={stopForwardSkip}
+        onmouseleave={stopForwardSkip}
+        ontouchstart={startForwardSkip}
+        ontouchend={stopForwardSkip}
+      >
+        Skip ⏩
+      </button>
+    </div>
+
+    
+
+    <!-- Tag Button and Panel (positioned at bottom-[78%]) 
+    {#if isOwner && asset?.id && !isSharedLink()}
+      <div class="z-[1001] fixed left-0 bottom-[78%]">
+        <div class="flex flex-col">
+          <!-- Always visible add tag button 
+          <button
+            type="button"
+            class="bg-immich-primary text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1 hover:bg-immich-primary/80 transition-all"
+            title="Add tag"
+            onclick={handleAddTag}
+          >
+            <Icon path={mdiPlus} size="0.75rem" />
+            <span class="text-xs">Add Tag</span>
+          </button>
+          
+          <!-- Toggle for existing tags 
+          {#if tags.length > 0}
+            <button 
+              type="button"
+              class="bg-black bg-opacity-40 text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1"
+              title="Toggle Tags"
+              onclick={toggleTagsPanel}
+            >
+              <span class="text-xs">View Tags {showTagsPanel ? '▲' : '▼'}</span>
+            </button>
+          {/if}
+          
+          {#if showTagsPanel && tags.length > 0}
+            <div class="bg-black bg-opacity-40 rounded p-2 max-w-[300px]">
+              <div class="flex flex-wrap gap-1">
+                {#each tags as tag (tag.id)}
+                  <div class="flex group transition-all">
+                    <a
+                      class="inline-block h-min whitespace-nowrap pl-2 pr-1 py-0.5 text-center align-baseline leading-none text-gray-100 bg-immich-primary rounded-tl-full rounded-bl-full hover:bg-immich-primary/80 transition-all"
+                      href={encodeURI(`${AppRoute.TAGS}/?path=${tag.value}`)}
+                    >
+                      <p class="text-xs">
+                        {tag.value}
+                      </p>
+                    </a>
+
+                    <button
+                      type="button"
+                      class="text-gray-100 bg-immich-primary/95 rounded-tr-full rounded-br-full place-items-center place-content-center pr-1 pl-0.5 py-0.5 hover:bg-immich-primary/80 transition-all"
+                      title="Remove tag"
+                      onclick={() => handleRemoveTag(tag.id)}
+                    >
+                      <Icon path={mdiClose} size="0.75rem" />
+                    </button>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
+      </div>
+    {/if}
+  </div>
+</div>
+
+{#if isTagFormOpen}
+  <Portal>
+    <TagAssetForm onTag={(tagsIds) => handleTag(tagsIds)} onCancel={handleCancelTag} />
+  </Portal>
+{/if}
+
+-->
+
+<!-- 
+<script lang="ts">
+  import LoadingSpinner from '$lib/components/shared-components/loading-spinner.svelte';
+  import { loopVideo as loopVideoPreference, videoViewerMuted, videoViewerVolume } from '$lib/stores/preferences.store';
+  import { getAssetPlaybackUrl, getAssetThumbnailUrl } from '$lib/utils';
+  import { handleError } from '$lib/utils/handle-error';
+  import { AssetMediaSize } from '@immich/sdk';
+  import { onDestroy, onMount } from 'svelte';
+  import { swipe } from 'svelte-gestures';
+  import type { SwipeCustomEvent } from 'svelte-gestures';
+  import { fade } from 'svelte/transition';
+  import { t } from 'svelte-i18n';
+  import { isFaceEditMode } from '$lib/stores/face-edit.svelte';
+  import FaceEditor from '$lib/components/asset-viewer/face-editor/face-editor.svelte';
+  
+  import Icon from '$lib/components/elements/icon.svelte';
+  import TagAssetForm from '$lib/components/forms/tag-asset-form.svelte';
+  import Portal from '$lib/components/shared-components/portal/portal.svelte';
+  import { AppRoute } from '$lib/constants';
+  import { isSharedLink } from '$lib/utils';
+  import { removeTag, tagAssets } from '$lib/utils/asset-utils';
+  import { getAssetInfo, type AssetResponseDto } from '@immich/sdk';
+  import { mdiClose, mdiPlus } from '@mdi/js';
+
+  interface Props {
+    assetId: string;
+    loopVideo: boolean;
+    cacheKey: string | null;
+    skipPercentage?: number; // Skip percentage of total video duration
+    maxSkipSeconds?: number; // Maximum skip time in seconds
+    minSkipSeconds?: number; // Minimum skip time in seconds
+    asset?: AssetResponseDto; // Added asset property
+    isOwner?: boolean; // Added isOwner property
+    onPreviousAsset?: () => void;
+    onNextAsset?: () => void;
+    onVideoEnded?: () => void;
+    onVideoStarted?: () => void;
+    onClose?: () => void;
+  }
+
+  let {
+    assetId,
+    loopVideo,
+    cacheKey,
+    skipPercentage = 0.2, // Default to 20% of video duration
+    maxSkipSeconds = 2, // Default max skip of 10 seconds
+    minSkipSeconds = 2, // Default min skip of 2 seconds
+    asset = $bindable(),
+    isOwner = true,
+    onPreviousAsset = () => {},
+    onNextAsset = () => {},
+    onVideoEnded = () => {},
+    onVideoStarted = () => {},
+    onClose = () => {},
+  }: Props = $props();
+
+  let videoPlayer: HTMLVideoElement | undefined = $state();
+  let isLoading = $state(true);
+  let assetFileUrl = $state('');
+  let forceMuted = $state(false);
+  let isScrubbing = $state(false);
+  
+  let skipForwardInterval: number | null = $state(null);
+  let skipBackwardInterval: number | null = $state(null);
+  let skipIntervalDelay = 470; // Milliseconds between skips when holding
+  
+  let currentTime = $state(0);
+  let duration = $state(0);
+  let progress = $state(0);
+  let isProgressBarHovered = $state(false);
+  let showControls = $state(true);
+  let controlsTimeout: number | null = $state(null);
+
+  let tags = $derived(asset?.tags || []);
+  let isTagFormOpen = $state(false);
+  let showTagsPanel = $state(false);
+
+  onMount(async () => {
+    if (videoPlayer) {
+      assetFileUrl = getAssetPlaybackUrl({ id: assetId, cacheKey });
+      forceMuted = false;
+      videoPlayer.load();
+    }
+    
+    if (!asset?.id && assetId) {
+      try {
+        asset = await getAssetInfo({ id: assetId });
+      } catch (error) {
+        handleError(error, $t('errors.unable_to_load_asset_info'));
+      }
+    }
+    
+    controlsTimeout = setTimeout(() => {
+      showControls = false;
+    }, 3000);
+  });
+
+  onDestroy(() => {
+    if (videoPlayer) {
+      videoPlayer.src = '';
+    }
+    clearHoldIntervals();
+    
+    if (controlsTimeout) {
+      clearTimeout(controlsTimeout);
+    }
+  });
+
+  const clearHoldIntervals = () => {
+    if (skipForwardInterval) {
+      clearInterval(skipForwardInterval);
+      skipForwardInterval = null;
+    }
+    if (skipBackwardInterval) {
+      clearInterval(skipBackwardInterval);
+      skipBackwardInterval = null;
+    }
+  };
+
+  const handleCanPlay = async (video: HTMLVideoElement) => {
+    try {
+      if (!video.paused && !isScrubbing) {
+        await video.play();
+        onVideoStarted();
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'NotAllowedError' && !forceMuted) {
+        await tryForceMutedPlay(video);
+        return;
+      }
+
+      handleError(error, $t('errors.unable_to_play_video'));
+    } finally {
+      isLoading = false;
+    }
+  };
+
+  const tryForceMutedPlay = async (video: HTMLVideoElement) => {
+    try {
+      video.muted = true;
+      await handleCanPlay(video);
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_play_video'));
+    }
+  };
+
+  const onSwipe = (event: SwipeCustomEvent) => {
+    if (event.detail.direction === 'left') {
+      onNextAsset();
+    }
+    if (event.detail.direction === 'right') {
+      onPreviousAsset();
+    }
+  };
+
+  const calculateSkipTime = () => {
+    if (!videoPlayer) return 0;
+    
+    let skipTime = videoPlayer.duration * skipPercentage;
+    
+    if (skipTime > maxSkipSeconds) {
+      skipTime = maxSkipSeconds;
+    } else if (skipTime < minSkipSeconds) {
+      skipTime = minSkipSeconds;
+    }
+    
+    return skipTime;
+  };
+
+  const skipForward = () => {
+    if (!videoPlayer) return;
+    
+    const skipTime = calculateSkipTime();
+    const newTime = Math.min(videoPlayer.currentTime + skipTime, videoPlayer.duration);
+    videoPlayer.currentTime = newTime;
+  };
+
+  const skipBackward = () => {
+    if (!videoPlayer) return;
+    
+    const skipTime = calculateSkipTime();
+    const newTime = Math.max(videoPlayer.currentTime - skipTime, 0);
+    videoPlayer.currentTime = newTime;
+  };
+
+  const startForwardSkip = () => {
+    if (skipForwardInterval) return; // Already skipping
+    
+    skipForward();
+    
+    skipForwardInterval = setInterval(() => {
+      skipForward();
+    }, skipIntervalDelay);
+  };
+
+  const stopForwardSkip = () => {
+    if (skipForwardInterval) {
+      clearInterval(skipForwardInterval);
+      skipForwardInterval = null;
+    }
+  };
+
+  const startBackwardSkip = () => {
+    if (skipBackwardInterval) return; // Already skipping
+    
+    skipBackward();
+    
+    skipBackwardInterval = setInterval(() => {
+      skipBackward();
+    }, skipIntervalDelay);
+  };
+
+  const stopBackwardSkip = () => {
+    if (skipBackwardInterval) {
+      clearInterval(skipBackwardInterval);
+      skipBackwardInterval = null;
+    }
+  };
+
+  const handleKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'ArrowRight') {
+      skipForward();
+      event.preventDefault();
+    }
+    else if (event.key === 'ArrowLeft') {
+      skipBackward();
+      event.preventDefault();
+    }
+  };
+  
+  const updateProgress = () => {
+    if (!videoPlayer) return;
+    currentTime = videoPlayer.currentTime;
+    duration = videoPlayer.duration || 0;
+    progress = duration ? (currentTime / duration) * 100 : 0;
+  };
+  
+  const handleProgressBarClick = (event: MouseEvent) => {
+    if (!videoPlayer) return;
+    const progressBar = event.currentTarget as HTMLDivElement;
+    const rect = progressBar.getBoundingClientRect();
+    const clickPosition = (event.clientX - rect.left) / rect.width;
+    videoPlayer.currentTime = clickPosition * videoPlayer.duration;
+  };
+  
+  const togglePlayPause = () => {
+    if (!videoPlayer) return;
+    if (videoPlayer.paused) {
+      videoPlayer.play();
+    } else {
+      videoPlayer.pause();
+    }
+    
+    showControls = true;
+    resetControlsTimeout();
+  };
+  
+  const formatTime = (timeInSeconds: number): string => {
+    if (isNaN(timeInSeconds)) return '00:00';
+    
+    const minutes = Math.floor(timeInSeconds / 60);
+    const seconds = Math.floor(timeInSeconds % 60);
+    
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+  
+  const resetControlsTimeout = () => {
+    if (controlsTimeout) {
+      clearTimeout(controlsTimeout);
+    }
+    
+    controlsTimeout = setTimeout(() => {
+      showControls = false;
+    }, 3000);
+  };
+  
+  const showVideoControls = () => {
+    showControls = true;
+    resetControlsTimeout();
+  };
+
+  const toggleTagsPanel = () => {
+    showTagsPanel = !showTagsPanel;
+  };
+
+  const handleAddTag = () => (isTagFormOpen = true);
+
+  const handleCancelTag = () => (isTagFormOpen = false);
+
+  const handleTag = async (tagIds: string[]) => {
+    if (!asset?.id) return;
+    
+    const ids = await tagAssets({ tagIds, assetIds: [asset.id], showNotification: false });
+    if (ids) {
+      isTagFormOpen = false;
+    }
+
+    asset = await getAssetInfo({ id: asset.id });
+  };
+
+  const handleRemoveTag = async (tagId: string) => {
+    if (!asset?.id) return;
+    
+    const ids = await removeTag({ tagIds: [tagId], assetIds: [asset.id], showNotification: false });
+    if (ids) {
+      asset = await getAssetInfo({ id: asset.id });
+    }
+  };
+
+  let containerWidth = $state(0);
+  let containerHeight = $state(0);
+
+  $effect(() => {
+    if (isFaceEditMode.value) {
+      videoPlayer?.pause();
+    }
+  });
+</script>
+
+<div
+  transition:fade={{ duration: 150 }}
+  class="flex flex-col h-full select-none"
+>
+  <div 
+    class="flex-grow relative flex place-content-center place-items-center"
+    bind:clientWidth={containerWidth}
+    bind:clientHeight={containerHeight}
+    onkeydown={handleKeydown}
+    tabindex="0"
+    onmousemove={showVideoControls}
+    ontouchmove={showVideoControls}
+  >
+    <video
+      bind:this={videoPlayer}
+      loop={$loopVideoPreference && loopVideo}
+      autoplay
+      playsinline
+      webkit-playsinline="true"
+      class="h-full object-contain"
+      use:swipe={() => ({})}
+      onswipe={onSwipe}
+      ontimeupdate={updateProgress}
+      oncanplay={(e) => handleCanPlay(e.currentTarget)}
+      onended={onVideoEnded}
+      onvolumechange={(e) => {
+        if (!forceMuted) {
+          $videoViewerMuted = e.currentTarget.muted;
+        }
+      }}
+      onseeking={() => (isScrubbing = true)}
+      onseeked={() => (isScrubbing = false)}
+      onplaying={(e) => {
+        e.currentTarget.focus();
+        updateProgress();
+      }}
+      onclose={() => onClose()}
+      muted={forceMuted || $videoViewerMuted}
+      bind:volume={$videoViewerVolume}
+      poster={getAssetThumbnailUrl({ id: assetId, size: AssetMediaSize.Preview, cacheKey })}
+      src={assetFileUrl}
+      onclick={togglePlayPause}
+    >
+    </video>
+
+    {#if isLoading}
+      <div class="absolute flex place-content-center place-items-center">
+        <LoadingSpinner />
+      </div>
+    {/if}
+
+    {#if isFaceEditMode.value}
+      <FaceEditor htmlElement={videoPlayer} {containerWidth} {containerHeight} {assetId} />
+    {/if}
+
+    <!-- Skip Backward Button with hold functionality 
+    <div class="z-[1001] fixed left-0 bottom-[35%]">
+      <button 
+        class="bg-transparent text-white rounded-full p-2"
+        onmousedown={startBackwardSkip}
+        onmouseup={stopBackwardSkip}
+        onmouseleave={stopBackwardSkip}
+        ontouchstart={startBackwardSkip}
+        ontouchend={stopBackwardSkip}
+      >
+        ⏪ Skip
+      </button>
+    </div>
+
+    <!-- Skip Forward Button with hold functionality 
+    <div class="z-[1001] fixed left-0 bottom-[88%]">
+      <button 
+        class="bg-transparent text-white rounded-full p-2"
+        onmousedown={startForwardSkip}
+        onmouseup={stopForwardSkip}
+        onmouseleave={stopForwardSkip}
+        ontouchstart={startForwardSkip}
+        ontouchend={stopForwardSkip}
+      >
+        Skip ⏩
+      </button>
+    </div>
+    
+    <!-- Custom progress bar - shows only when showControls is true 
+    {#if showControls}
+      <div 
+      class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-40 px-2 py-1 transition-opacity mx-auto max-w-[80%]"
+      transition:fade={{ duration: 150 }}
+      >
+        <div 
+          class="relative h-2 bg-gray-600 rounded cursor-pointer"
+          onmousedown={handleProgressBarClick}
+          ontouchstart={handleProgressBarClick}
+        >
+          <div 
+            class="absolute top-0 left-0 h-full bg-immich-primary rounded"
+            style={`width: ${progress}%`}
+          ></div>
+        </div>
+        
+        <!-- Time indicator 
+        <div class="flex justify-between text-xs text-white mt-1">
+          <span>{formatTime(currentTime)}</span>
+          <span>{formatTime(duration)}</span>
+        </div>
+      </div>
+    {/if}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- Tag Button and Panel section (modified) 
+{#if isOwner && asset?.id && !isSharedLink()}
+  <div class="z-[1001] fixed left-0 bottom-[78%]">
+    <div class="flex flex-col">
+      <!-- Always visible add tag button 
+      <button
+        type="button"
+        class="bg-immich-primary text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1 hover:bg-immich-primary/80 transition-all"
+        title="Add tag"
+        onclick={handleAddTag}
+      >
+        <Icon path={mdiPlus} size="0.75rem" />
+        <span class="text-xs">Add Tag</span>
+      </button>
+      
+      <!-- Toggle for existing tags 
+      {#if tags.length > 0}
+        <button 
+          type="button"
+          class="bg-black bg-opacity-40 text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1"
+          title="Toggle Tags"
+          onclick={toggleTagsPanel}
+        >
+          <span class="text-xs">View Tags {showTagsPanel ? '▲' : '▼'}</span>
+        </button>
+      {/if}
+      
+      {#if showTagsPanel && tags.length > 0}
+        <!-- Reduced max-width from 300px to 200px 
+        <div class="bg-black bg-opacity-40 rounded p-2 max-w-[200px]">
+          <div class="flex flex-wrap gap-1">
+            {#each tags as tag (tag.id)}
+              <div class="flex group transition-all">
+                <a
+                  class="inline-block h-min whitespace-nowrap pl-2 pr-1 py-0.5 text-center align-baseline leading-none text-gray-100 bg-immich-primary rounded-tl-full rounded-bl-full hover:bg-immich-primary/80 transition-all"
+                  href={encodeURI(`${AppRoute.TAGS}/?path=${tag.value}`)}
+                >
+                  <p class="text-xs">
+                    {tag.value}
+                  </p>
+                </a>
+
+                <button
+                  type="button"
+                  class="text-gray-100 bg-immich-primary/95 rounded-tr-full rounded-br-full place-items-center place-content-center pr-1 pl-0.5 py-0.5 hover:bg-immich-primary/80 transition-all"
+                  title="Remove tag"
+                  onclick={() => handleRemoveTag(tag.id)}
+                >
+                  <Icon path={mdiClose} size="0.75rem" />
+                </button>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
+</div>
+</div>
+
+
+
+{#if isTagFormOpen}
+  <Portal>
+    <TagAssetForm onTag={(tagsIds) => handleTag(tagsIds)} onCancel={handleCancelTag} />
+  </Portal>
+{/if}
+
+-->
+
+<!-- new addition whatever number
+<script lang="ts">
+  import LoadingSpinner from '$lib/components/shared-components/loading-spinner.svelte';
+  import { loopVideo as loopVideoPreference, videoViewerMuted, videoViewerVolume } from '$lib/stores/preferences.store';
+  import { getAssetPlaybackUrl, getAssetThumbnailUrl } from '$lib/utils';
+  import { handleError } from '$lib/utils/handle-error';
+  import { AssetMediaSize } from '@immich/sdk';
+  import { onDestroy, onMount } from 'svelte';
+  import { swipe } from 'svelte-gestures';
+  import type { SwipeCustomEvent } from 'svelte-gestures';
+  import { fade } from 'svelte/transition';
+  import { t } from 'svelte-i18n';
+  import { isFaceEditMode } from '$lib/stores/face-edit.svelte';
+  import FaceEditor from '$lib/components/asset-viewer/face-editor/face-editor.svelte';
+  
+  import Icon from '$lib/components/elements/icon.svelte';
+  import TagAssetForm from '$lib/components/forms/tag-asset-form.svelte';
+  import Portal from '$lib/components/shared-components/portal/portal.svelte';
+  import { AppRoute } from '$lib/constants';
+  import { isSharedLink } from '$lib/utils';
+  import { removeTag, tagAssets } from '$lib/utils/asset-utils';
+  import { getAssetInfo, type AssetResponseDto } from '@immich/sdk';
+  import { mdiClose, mdiPlus, mdiTag } from '@mdi/js';
+
+  interface Props {
+    assetId: string;
+    loopVideo: boolean;
+    cacheKey: string | null;
+    skipPercentage?: number; // Skip percentage of total video duration
+    maxSkipSeconds?: number; // Maximum skip time in seconds
+    minSkipSeconds?: number; // Minimum skip time in seconds
+    asset?: AssetResponseDto; // Added asset property
+    isOwner?: boolean; // Added isOwner property
+    onPreviousAsset?: () => void;
+    onNextAsset?: () => void;
+    onVideoEnded?: () => void;
+    onVideoStarted?: () => void;
+    onClose?: () => void;
+  }
+
+  let {
+    assetId,
+    loopVideo,
+    cacheKey,
+    skipPercentage = 0.2, // Default to 20% of video duration
+    maxSkipSeconds = 2, // Default max skip of 10 seconds
+    minSkipSeconds = 2, // Default min skip of 2 seconds
+    asset = $bindable(),
+    isOwner = true,
+    onPreviousAsset = () => {},
+    onNextAsset = () => {},
+    onVideoEnded = () => {},
+    onVideoStarted = () => {},
+    onClose = () => {},
+  }: Props = $props();
+
+  let videoPlayer: HTMLVideoElement | undefined = $state();
+  let isLoading = $state(true);
+  let assetFileUrl = $state('');
+  let forceMuted = $state(false);
+  let isScrubbing = $state(false);
+  
+  let skipForwardInterval: number | null = $state(null);
+  let skipBackwardInterval: number | null = $state(null);
+  let skipIntervalDelay = 570; // Milliseconds between skips when holding
+  
+  let currentTime = $state(0);
+  let duration = $state(0);
+  let progress = $state(0);
+  let isProgressBarHovered = $state(false);
+  let showControls = $state(true);
+  let controlsTimeout: number | null = $state(null);
+
+  let tags = $derived(asset?.tags || []);
+  let isTagFormOpen = $state(false);
+  let showTagsPanel = $state(false);
+  
+  const presetTags = [
+    { id: 'preset-top', value: 'top' },
+    { id: 'preset-semitop', value: 'semitop' },
+    { id: 'preset-low', value: 'low' }
+  ];
+  
+  let selectedPresetTags = $state<string[]>([]);
+
+  onMount(async () => {
+    if (videoPlayer) {
+      assetFileUrl = getAssetPlaybackUrl({ id: assetId, cacheKey });
+      forceMuted = false;
+      videoPlayer.load();
+    }
+    
+    if (!asset?.id && assetId) {
+      try {
+        asset = await getAssetInfo({ id: assetId });
+      } catch (error) {
+        handleError(error, $t('errors.unable_to_load_asset_info'));
+      }
+    }
+    
+    if (asset?.tags) {
+      selectedPresetTags = asset.tags
+        .filter(tag => presetTags.some(preset => preset.value === tag.value))
+        .map(tag => tag.value);
+    }
+    
+    controlsTimeout = setTimeout(() => {
+      showControls = false;
+    }, 3000);
+  });
+
+  onDestroy(() => {
+    if (videoPlayer) {
+      videoPlayer.src = '';
+    }
+    clearHoldIntervals();
+    
+    if (controlsTimeout) {
+      clearTimeout(controlsTimeout);
+    }
+  });
+
+  const clearHoldIntervals = () => {
+    if (skipForwardInterval) {
+      clearInterval(skipForwardInterval);
+      skipForwardInterval = null;
+    }
+    if (skipBackwardInterval) {
+      clearInterval(skipBackwardInterval);
+      skipBackwardInterval = null;
+    }
+  };
+
+  const handleCanPlay = async (video: HTMLVideoElement) => {
+    try {
+      if (!video.paused && !isScrubbing) {
+        await video.play();
+        onVideoStarted();
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'NotAllowedError' && !forceMuted) {
+        await tryForceMutedPlay(video);
+        return;
+      }
+
+      handleError(error, $t('errors.unable_to_play_video'));
+    } finally {
+      isLoading = false;
+    }
+  };
+
+  const tryForceMutedPlay = async (video: HTMLVideoElement) => {
+    try {
+      video.muted = true;
+      await handleCanPlay(video);
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_play_video'));
+    }
+  };
+
+  const onSwipe = (event: SwipeCustomEvent) => {
+    if (event.detail.direction === 'left') {
+      onNextAsset();
+    }
+    if (event.detail.direction === 'right') {
+      onPreviousAsset();
+    }
+  };
+
+  const calculateSkipTime = () => {
+    if (!videoPlayer) return 0;
+    
+    let skipTime = videoPlayer.duration * skipPercentage;
+    
+    if (skipTime > maxSkipSeconds) {
+      skipTime = maxSkipSeconds;
+    } else if (skipTime < minSkipSeconds) {
+      skipTime = minSkipSeconds;
+    }
+    
+    return skipTime;
+  };
+
+  const skipForward = () => {
+    if (!videoPlayer) return;
+    
+    const skipTime = calculateSkipTime();
+    const newTime = Math.min(videoPlayer.currentTime + skipTime, videoPlayer.duration);
+    videoPlayer.currentTime = newTime;
+  };
+
+  const skipBackward = () => {
+    if (!videoPlayer) return;
+    
+    const skipTime = calculateSkipTime();
+    const newTime = Math.max(videoPlayer.currentTime - skipTime, 0);
+    videoPlayer.currentTime = newTime;
+  };
+
+  const startForwardSkip = () => {
+    if (skipForwardInterval) return; // Already skipping
+    
+    skipForward();
+    
+    skipForwardInterval = setInterval(() => {
+      skipForward();
+    }, skipIntervalDelay);
+  };
+
+  const stopForwardSkip = () => {
+    if (skipForwardInterval) {
+      clearInterval(skipForwardInterval);
+      skipForwardInterval = null;
+    }
+  };
+
+  const startBackwardSkip = () => {
+    if (skipBackwardInterval) return; // Already skipping
+    
+    skipBackward();
+    
+    skipBackwardInterval = setInterval(() => {
+      skipBackward();
+    }, skipIntervalDelay);
+  };
+
+  const stopBackwardSkip = () => {
+    if (skipBackwardInterval) {
+      clearInterval(skipBackwardInterval);
+      skipBackwardInterval = null;
+    }
+  };
+
+  const handleKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'ArrowRight') {
+      skipForward();
+      event.preventDefault();
+    }
+    else if (event.key === 'ArrowLeft') {
+      skipBackward();
+      event.preventDefault();
+    }
+  };
+  
+  const updateProgress = () => {
+    if (!videoPlayer) return;
+    currentTime = videoPlayer.currentTime;
+    duration = videoPlayer.duration || 0;
+    progress = duration ? (currentTime / duration) * 100 : 0;
+  };
+  
+  const handleProgressBarClick = (event: MouseEvent) => {
+    if (!videoPlayer) return;
+    const progressBar = event.currentTarget as HTMLDivElement;
+    const rect = progressBar.getBoundingClientRect();
+    const clickPosition = (event.clientX - rect.left) / rect.width;
+    videoPlayer.currentTime = clickPosition * videoPlayer.duration;
+  };
+  
+  const togglePlayPause = () => {
+    if (!videoPlayer) return;
+    if (videoPlayer.paused) {
+      videoPlayer.play();
+    } else {
+      videoPlayer.pause();
+    }
+    
+    showControls = true;
+    resetControlsTimeout();
+  };
+  
+  const formatTime = (timeInSeconds: number): string => {
+    if (isNaN(timeInSeconds)) return '00:00';
+    
+    const minutes = Math.floor(timeInSeconds / 60);
+    const seconds = Math.floor(timeInSeconds % 60);
+    
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+  
+  const resetControlsTimeout = () => {
+    if (controlsTimeout) {
+      clearTimeout(controlsTimeout);
+    }
+    
+    controlsTimeout = setTimeout(() => {
+      showControls = false;
+    }, 3000);
+  };
+  
+  const showVideoControls = () => {
+    showControls = true;
+    resetControlsTimeout();
+  };
+
+  const toggleTagsPanel = () => {
+    showTagsPanel = !showTagsPanel;
+  };
+
+  const handleAddTag = () => (isTagFormOpen = true);
+
+  const handleCancelTag = () => (isTagFormOpen = false);
+
+  const handleTag = async (tagIds: string[]) => {
+    if (!asset?.id) return;
+    
+    const ids = await tagAssets({ tagIds, assetIds: [asset.id], showNotification: false });
+    if (ids) {
+      isTagFormOpen = false;
+    }
+
+    asset = await getAssetInfo({ id: asset.id });
+    
+    if (asset?.tags) {
+      selectedPresetTags = asset.tags
+        .filter(tag => presetTags.some(preset => preset.value === tag.value))
+        .map(tag => tag.value);
+    }
+  };
+
+  const handleRemoveTag = async (tagId: string) => {
+    if (!asset?.id) return;
+    
+    const ids = await removeTag({ tagIds: [tagId], assetIds: [asset.id], showNotification: false });
+    if (ids) {
+      asset = await getAssetInfo({ id: asset.id });
+      
+      if (asset?.tags) {
+        selectedPresetTags = asset.tags
+          .filter(tag => presetTags.some(preset => preset.value === tag.value))
+          .map(tag => tag.value);
+      }
+    }
+  };
+  
+  const togglePresetTag = async (presetTag: string) => {
+    if (!asset?.id) return;
+    
+    const existingTag = asset.tags.find(tag => tag.value === presetTag);
+    
+    if (existingTag) {
+      await handleRemoveTag(existingTag.id);
+    } else {
+      isTagFormOpen = true;
+    }
+  };
+  
+  const isPresetTagSelected = (tagValue: string): boolean => {
+    return asset?.tags?.some(tag => tag.value === tagValue) || false;
+  };
+
+  let containerWidth = $state(0);
+  let containerHeight = $state(0);
+
+  $effect(() => {
+    if (isFaceEditMode.value) {
+      videoPlayer?.pause();
+    }
+  });
+</script>
+
+<div
+  transition:fade={{ duration: 150 }}
+  class="flex flex-col h-full select-none"
+>
+  <div 
+    class="flex-grow relative flex place-content-center place-items-center"
+    bind:clientWidth={containerWidth}
+    bind:clientHeight={containerHeight}
+    onkeydown={handleKeydown}
+    tabindex="0"
+    onmousemove={showVideoControls}
+    ontouchmove={showVideoControls}
+  >
+    <video
+      bind:this={videoPlayer}
+      loop={$loopVideoPreference && loopVideo}
+      autoplay
+      playsinline
+      webkit-playsinline="true"
+      class="h-full object-contain"
+      use:swipe={() => ({})}
+      onswipe={onSwipe}
+      ontimeupdate={updateProgress}
+      oncanplay={(e) => handleCanPlay(e.currentTarget)}
+      onended={onVideoEnded}
+      onvolumechange={(e) => {
+        if (!forceMuted) {
+          $videoViewerMuted = e.currentTarget.muted;
+        }
+      }}
+      onseeking={() => (isScrubbing = true)}
+      onseeked={() => (isScrubbing = false)}
+      onplaying={(e) => {
+        e.currentTarget.focus();
+        updateProgress();
+      }}
+      onclose={() => onClose()}
+      muted={forceMuted || $videoViewerMuted}
+      bind:volume={$videoViewerVolume}
+      poster={getAssetThumbnailUrl({ id: assetId, size: AssetMediaSize.Preview, cacheKey })}
+      src={assetFileUrl}
+      onclick={togglePlayPause}
+    >
+    </video>
+
+    {#if isLoading}
+      <div class="absolute flex place-content-center place-items-center">
+        <LoadingSpinner />
+      </div>
+    {/if}
+
+    {#if isFaceEditMode.value}
+      <FaceEditor htmlElement={videoPlayer} {containerWidth} {containerHeight} {assetId} />
+    {/if}
+
+    <!-- Skip Backward Button with hold functionality 
+    <div class="z-[1001] fixed left-0 bottom-[35%]">
+      <button 
+        class="bg-transparent text-white rounded-full p-2"
+        onmousedown={startBackwardSkip}
+        onmouseup={stopBackwardSkip}
+        onmouseleave={stopBackwardSkip}
+        ontouchstart={startBackwardSkip}
+        ontouchend={stopBackwardSkip}
+      >
+        ⏪ Skip
+      </button>
+    </div>
+
+    <!-- Skip Forward Button with hold functionality 
+    <div class="z-[1001] fixed left-0 bottom-[88%]">
+      <button 
+        class="bg-transparent text-white rounded-full p-2"
+        onmousedown={startForwardSkip}
+        onmouseup={stopForwardSkip}
+        onmouseleave={stopForwardSkip}
+        ontouchstart={startForwardSkip}
+        ontouchend={stopForwardSkip}
+      >
+        Skip ⏩
+      </button>
+    </div>
+    
+<!-- Preset Tags Quick Access Panel - Left side of the video 
+{#if isOwner && asset?.id && !isSharedLink()}
+  <div class="z-[1001] fixed left-4 top-1/3 transform -translate-y-1/2">
+    <div class="flex flex-col gap-2">
+      {#each presetTags as presetTag (presetTag.id)}
+        <button
+          type="button"
+          class={`px-3 py-2 rounded-lg text-white transition-all flex items-center gap-1 ${isPresetTagSelected(presetTag.value) ? 'bg-immich-primary' : 'bg-black bg-opacity-40 hover:bg-immich-primary/60'}`}
+          onclick={() => togglePresetTag(presetTag.value)}
+        >
+          <Icon path={mdiTag} size="0.75rem" />
+          <span class="text-sm font-medium">{presetTag.value}</span>
+        </button>
+      {/each}
+    </div>
+  </div>
+{/if}
+    
+    <!-- Custom progress bar - shows only when showControls is true 
+    {#if showControls}
+      <div 
+      class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-40 px-2 py-1 transition-opacity mx-auto max-w-[80%]"
+      transition:fade={{ duration: 150 }}
+      >
+        <div 
+          class="relative h-2 bg-gray-600 rounded cursor-pointer"
+          onmousedown={handleProgressBarClick}
+          ontouchstart={handleProgressBarClick}
+        >
+          <div 
+            class="absolute top-0 left-0 h-full bg-immich-primary rounded"
+            style={`width: ${progress}%`}
+          ></div>
+        </div>
+        
+        <!-- Time indicator
+        <div class="flex justify-between text-xs text-white mt-1">
+          <span>{formatTime(currentTime)}</span>
+          <span>{formatTime(duration)}</span>
+        </div>
+      </div>
+    {/if}
+
+    <!-- Tag Button and Panel section -
+    {#if isOwner && asset?.id && !isSharedLink()}
+      <div class="z-[1001] fixed left-0 bottom-[78%]">
+        <div class="flex flex-col">
+          <!-- Always visible add tag button 
+          <button
+            type="button"
+            class="bg-immich-primary text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1 hover:bg-immich-primary/80 transition-all"
+            title="Add tag"
+            onclick={handleAddTag}
+          >
+            <Icon path={mdiPlus} size="0.75rem" />
+            <span class="text-xs">Add Tag</span>
+          </button>
+          
+          <!-- Toggle for existing tags 
+          {#if tags.length > 0}
+            <button 
+              type="button"
+              class="bg-black bg-opacity-40 text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1"
+              title="Toggle Tags"
+              onclick={toggleTagsPanel}
+            >
+              <span class="text-xs">View Tags {showTagsPanel ? '▲' : '▼'}</span>
+            </button>
+          {/if}
+          
+          {#if showTagsPanel && tags.length > 0}
+            <!-- Reduced max-width from 300px to 200px 
+            <div class="bg-black bg-opacity-40 rounded p-2 max-w-[200px]">
+              <div class="flex flex-wrap gap-1">
+                {#each tags as tag (tag.id)}
+                  <div class="flex group transition-all">
+                    <a
+                      class="inline-block h-min whitespace-nowrap pl-2 pr-1 py-0.5 text-center align-baseline leading-none text-gray-100 bg-immich-primary rounded-tl-full rounded-bl-full hover:bg-immich-primary/80 transition-all"
+                      href={encodeURI(`${AppRoute.TAGS}/?path=${tag.value}`)}
+                    >
+                      <p class="text-xs">
+                        {tag.value}
+                      </p>
+                    </a>
+
+                    <button
+                      type="button"
+                      class="text-gray-100 bg-immich-primary/95 rounded-tr-full rounded-br-full place-items-center place-content-center pr-1 pl-0.5 py-0.5 hover:bg-immich-primary/80 transition-all"
+                      title="Remove tag"
+                      onclick={() => handleRemoveTag(tag.id)}
+                    >
+                      <Icon path={mdiClose} size="0.75rem" />
+                    </button>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
+      </div>
+    {/if}
+  </div>
+</div>
+
+{#if isTagFormOpen}
+  <Portal>
+    <TagAssetForm onTag={(tagsIds) => handleTag(tagsIds)} onCancel={handleCancelTag} />
+  </Portal>
+{/if}
+
+
+    -->
+
+    <script lang="ts">
+      import LoadingSpinner from '$lib/components/shared-components/loading-spinner.svelte';
+      import { loopVideo as loopVideoPreference, videoViewerMuted, videoViewerVolume } from '$lib/stores/preferences.store';
+      import { getAssetPlaybackUrl, getAssetThumbnailUrl } from '$lib/utils';
+      import { handleError } from '$lib/utils/handle-error';
+      import { AssetMediaSize } from '@immich/sdk';
+      import { onDestroy, onMount } from 'svelte';
+      import { swipe } from 'svelte-gestures';
+      import type { SwipeCustomEvent } from 'svelte-gestures';
+      import { fade } from 'svelte/transition';
+      import { t } from 'svelte-i18n';
+      import { isFaceEditMode } from '$lib/stores/face-edit.svelte';
+      import FaceEditor from '$lib/components/asset-viewer/face-editor/face-editor.svelte';
+      
+      import Icon from '$lib/components/elements/icon.svelte';
+      import TagAssetForm from '$lib/components/forms/tag-asset-form.svelte';
+      import Portal from '$lib/components/shared-components/portal/portal.svelte';
+      import { AppRoute } from '$lib/constants';
+      import { isSharedLink } from '$lib/utils';
+      import { removeTag, tagAssets } from '$lib/utils/asset-utils';
+      import { getAssetInfo, type AssetResponseDto, getAllTags } from '@immich/sdk';
+      import { mdiClose, mdiPlus, mdiTag } from '@mdi/js';
+    
+      interface Props {
+        assetId: string;
+        loopVideo: boolean;
+        cacheKey: string | null;
+        skipPercentage?: number; // Skip percentage of total video duration
+        maxSkipSeconds?: number; // Maximum skip time in seconds
+        minSkipSeconds?: number; // Minimum skip time in seconds
+        asset?: AssetResponseDto; // Added asset property
+        isOwner?: boolean; // Added isOwner property
+        onPreviousAsset?: () => void;
+        onNextAsset?: () => void;
+        onVideoEnded?: () => void;
+        onVideoStarted?: () => void;
+        onClose?: () => void;
+      }
+    
+      let {
+        assetId,
+        loopVideo,
+        cacheKey,
+        skipPercentage = 0.1, // Default to 20% of video duration
+        maxSkipSeconds = 1, // Default max skip of 10 seconds
+        minSkipSeconds = 1, // Default min skip of 2 seconds
+        asset = $bindable(),
+        isOwner = true,
+        onPreviousAsset = () => {},
+        onNextAsset = () => {},
+        onVideoEnded = () => {},
+        onVideoStarted = () => {},
+        onClose = () => {},
+      }: Props = $props();
+    
+      let videoPlayer: HTMLVideoElement | undefined = $state();
+      let isLoading = $state(true);
+      let assetFileUrl = $state('');
+      let forceMuted = $state(false);
+      let isScrubbing = $state(false);
+      
+      let skipForwardInterval: number | null = $state(null);
+      let skipBackwardInterval: number | null = $state(null);
+      let skipIntervalDelay = 470; // Milliseconds between skips when holding
+      
+      let currentTime = $state(0);
+      let duration = $state(0);
+      let progress = $state(0);
+      let isProgressBarHovered = $state(false);
+      let showControls = $state(true);
+      let controlsTimeout: number | null = $state(null);
+    
+      let tags = $derived(asset?.tags || []);
+      let isTagFormOpen = $state(false);
+      let showTagsPanel = $state(false);
+      
+      const presetTags = [
+      { id: 'preset-low', value: 'low' },
+      { id: 'preset-semitop', value: 'semitop' },
+      { id: 'preset-top', value: 'top' },
+      { id: 'preset-lowTOK', value: 'lowTOK' },
+      { id: 'preset-semiTOK', value: 'semiTOK' },
+      { id: 'preset-topTOK', value: 'topTOK' },
+      { id: 'preset-wiggle', value: 'wiggle' },
+      { id: 'preset-twerk', value: 'twerk' },
+      { id: 'preset-ass', value: 'ass' },
+      { id: 'preset-walk', value: 'walk' },
+      { id: 'preset-pose', value: 'pose' },
+      { id: 'preset-recoil', value: 'recoil' },
+      { id: 'preset-lay', value: 'lay' },
+      { id: 'preset-tongue', value: 'tongue' },
+      { id: 'preset-ahegao', value: 'ahegao' },
+      { id: 'preset-tit', value: 'tit' }
+    ];
+      
+      let availableTagsMap = $state<Record<string, string>>({});
+      
+      let selectedPresetTags = $state<string[]>([]);
+    
+      onMount(async () => {
+        if (videoPlayer) {
+          assetFileUrl = getAssetPlaybackUrl({ id: assetId, cacheKey });
+          forceMuted = false;
+          videoPlayer.load();
+        }
+        
+        if (!asset?.id && assetId) {
+          try {
+            asset = await getAssetInfo({ id: assetId });
+          } catch (error) {
+            handleError(error, $t('errors.unable_to_load_asset_info'));
+          }
+        }
+        
+        if (asset?.tags) {
+          selectedPresetTags = asset.tags
+            .filter(tag => presetTags.some(preset => preset.value === tag.value))
+            .map(tag => tag.value);
+        }
+        
+        try {
+          const allTags = await getAllTags();
+          
+          availableTagsMap = allTags.reduce((map: Record<string, string>, tag) => {
+            map[tag.value.toLowerCase()] = tag.id;
+            return map;
+          }, {});
+        } catch (error) {
+          handleError(error, $t('errors.unable_to_load_tags'));
+        }
+        
+        controlsTimeout = setTimeout(() => {
+          showControls = false;
+        }, 3000);
+      });
+    
+      onDestroy(() => {
+        if (videoPlayer) {
+          videoPlayer.src = '';
+        }
+        clearHoldIntervals();
+        
+        if (controlsTimeout) {
+          clearTimeout(controlsTimeout);
+        }
+      });
+    
+      const clearHoldIntervals = () => {
+        if (skipForwardInterval) {
+          clearInterval(skipForwardInterval);
+          skipForwardInterval = null;
+        }
+        if (skipBackwardInterval) {
+          clearInterval(skipBackwardInterval);
+          skipBackwardInterval = null;
+        }
+      };
+    
+      const handleCanPlay = async (video: HTMLVideoElement) => {
+        try {
+          if (!video.paused && !isScrubbing) {
+            await video.play();
+            onVideoStarted();
+          }
+        } catch (error) {
+          if (error instanceof DOMException && error.name === 'NotAllowedError' && !forceMuted) {
+            await tryForceMutedPlay(video);
+            return;
+          }
+    
+          handleError(error, $t('errors.unable_to_play_video'));
+        } finally {
+          isLoading = false;
+        }
+      };
+    
+      const tryForceMutedPlay = async (video: HTMLVideoElement) => {
+        try {
+          video.muted = true;
+          await handleCanPlay(video);
+        } catch (error) {
+          handleError(error, $t('errors.unable_to_play_video'));
+        }
+      };
+    
+      const onSwipe = (event: SwipeCustomEvent) => {
+        if (event.detail.direction === 'left') {
+          onNextAsset();
+        }
+        if (event.detail.direction === 'right') {
+          onPreviousAsset();
+        }
+      };
+    
+      const calculateSkipTime = () => {
+        if (!videoPlayer) return 0;
+        
+        let skipTime = videoPlayer.duration * skipPercentage;
+        
+        if (skipTime > maxSkipSeconds) {
+          skipTime = maxSkipSeconds;
+        } else if (skipTime < minSkipSeconds) {
+          skipTime = minSkipSeconds;
+        }
+        
+        return skipTime;
+      };
+    
+      const skipForward = () => {
+        if (!videoPlayer) return;
+        
+        const skipTime = calculateSkipTime();
+        const newTime = Math.min(videoPlayer.currentTime + skipTime, videoPlayer.duration);
+        videoPlayer.currentTime = newTime;
+      };
+    
+      const skipBackward = () => {
+        if (!videoPlayer) return;
+        
+        const skipTime = calculateSkipTime();
+        const newTime = Math.max(videoPlayer.currentTime - skipTime, 0);
+        videoPlayer.currentTime = newTime;
+      };
+    
+      const startForwardSkip = () => {
+        if (skipForwardInterval) return; // Already skipping
+        
+        skipForward();
+        
+        skipForwardInterval = setInterval(() => {
+          skipForward();
+        }, skipIntervalDelay);
+      };
+    
+      const stopForwardSkip = () => {
+        if (skipForwardInterval) {
+          clearInterval(skipForwardInterval);
+          skipForwardInterval = null;
+        }
+      };
+    
+      const startBackwardSkip = () => {
+        if (skipBackwardInterval) return; // Already skipping
+        
+        skipBackward();
+        
+        skipBackwardInterval = setInterval(() => {
+          skipBackward();
+        }, skipIntervalDelay);
+      };
+    
+      const stopBackwardSkip = () => {
+        if (skipBackwardInterval) {
+          clearInterval(skipBackwardInterval);
+          skipBackwardInterval = null;
+        }
+      };
+    
+      const handleKeydown = (event: KeyboardEvent) => {
+        if (event.key === 'ArrowRight') {
+          skipForward();
+          event.preventDefault();
+        }
+        else if (event.key === 'ArrowLeft') {
+          skipBackward();
+          event.preventDefault();
+        }
+      };
+      
+      const updateProgress = () => {
+        if (!videoPlayer) return;
+        currentTime = videoPlayer.currentTime;
+        duration = videoPlayer.duration || 0;
+        progress = duration ? (currentTime / duration) * 100 : 0;
+      };
+      
+      const handleProgressBarClick = (event: MouseEvent) => {
+        if (!videoPlayer) return;
+        const progressBar = event.currentTarget as HTMLDivElement;
+        const rect = progressBar.getBoundingClientRect();
+        const clickPosition = (event.clientX - rect.left) / rect.width;
+        videoPlayer.currentTime = clickPosition * videoPlayer.duration;
+      };
+      
+      const togglePlayPause = () => {
+        if (!videoPlayer) return;
+        if (videoPlayer.paused) {
+          videoPlayer.play();
+        } else {
+          videoPlayer.pause();
+        }
+        
+        showControls = true;
+        resetControlsTimeout();
+      };
+      
+      const formatTime = (timeInSeconds: number): string => {
+        if (isNaN(timeInSeconds)) return '00:00';
+        
+        const minutes = Math.floor(timeInSeconds / 60);
+        const seconds = Math.floor(timeInSeconds % 60);
+        
+        return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      };
+      
+      const resetControlsTimeout = () => {
+        if (controlsTimeout) {
+          clearTimeout(controlsTimeout);
+        }
+        
+        controlsTimeout = setTimeout(() => {
+          showControls = false;
+        }, 3000);
+      };
+      
+      const showVideoControls = () => {
+        showControls = true;
+        resetControlsTimeout();
+      };
+    
+      const toggleTagsPanel = () => {
+        showTagsPanel = !showTagsPanel;
+      };
+    
+      const handleAddTag = () => (isTagFormOpen = true);
+    
+      const handleCancelTag = () => (isTagFormOpen = false);
+    
+      const handleTag = async (tagIds: string[]) => {
+        if (!asset?.id) return;
+        
+        const ids = await tagAssets({ tagIds, assetIds: [asset.id], showNotification: false });
+        if (ids) {
+          isTagFormOpen = false;
+        }
+    
+        asset = await getAssetInfo({ id: asset.id });
+        
+        if (asset?.tags) {
+          selectedPresetTags = asset.tags
+            .filter(tag => presetTags.some(preset => preset.value === tag.value))
+            .map(tag => tag.value);
+        }
+      };
+    
+      const handleRemoveTag = async (tagId: string) => {
+        if (!asset?.id) return;
+        
+        const ids = await removeTag({ tagIds: [tagId], assetIds: [asset.id], showNotification: false });
+        if (ids) {
+          asset = await getAssetInfo({ id: asset.id });
+          
+          if (asset?.tags) {
+            selectedPresetTags = asset.tags
+              .filter(tag => presetTags.some(preset => preset.value === tag.value))
+              .map(tag => tag.value);
+          }
+        }
+      };
+      
+      const togglePresetTag = async (presetTagValue: string) => {
+        if (!asset?.id) return;
+        
+        const existingTag = asset.tags.find(tag => tag.value === presetTagValue);
+        
+        if (existingTag) {
+          await handleRemoveTag(existingTag.id);
+        } else {
+          
+          const tagId = availableTagsMap[presetTagValue.toLowerCase()];
+          
+          if (tagId) {
+            await handleTag([tagId]);
+          } else {
+            isTagFormOpen = true;
+          }
+        }
+      };
+      
+      const isPresetTagSelected = (tagValue: string): boolean => {
+        return asset?.tags?.some(tag => tag.value === tagValue) || false;
+      };
+    
+      let containerWidth = $state(0);
+      let containerHeight = $state(0);
+    
+      $effect(() => {
+        if (isFaceEditMode.value) {
+          videoPlayer?.pause();
+        }
+      });
+    </script>
+    
+    <div
+      transition:fade={{ duration: 150 }}
+      class="flex flex-col h-full select-none"
+    >
+      <div 
+        class="flex-grow relative flex place-content-center place-items-center"
+        bind:clientWidth={containerWidth}
+        bind:clientHeight={containerHeight}
+        onkeydown={handleKeydown}
+        tabindex="0"
+        onmousemove={showVideoControls}
+        ontouchmove={showVideoControls}
+      >
+        <video
+          bind:this={videoPlayer}
+          loop={$loopVideoPreference && loopVideo}
+          autoplay
+          playsinline
+          webkit-playsinline="true"
+          class="h-full object-contain"
+          use:swipe={() => ({})}
+          onswipe={onSwipe}
+          ontimeupdate={updateProgress}
+          oncanplay={(e) => handleCanPlay(e.currentTarget)}
+          onended={onVideoEnded}
+          onvolumechange={(e) => {
+            if (!forceMuted) {
+              $videoViewerMuted = e.currentTarget.muted;
+            }
+          }}
+          onseeking={() => (isScrubbing = true)}
+          onseeked={() => (isScrubbing = false)}
+          onplaying={(e) => {
+            e.currentTarget.focus();
+            updateProgress();
+          }}
+          onclose={() => onClose()}
+          muted={forceMuted || $videoViewerMuted}
+          bind:volume={$videoViewerVolume}
+          poster={getAssetThumbnailUrl({ id: assetId, size: AssetMediaSize.Preview, cacheKey })}
+          src={assetFileUrl}
+          onclick={togglePlayPause}
+        >
+        </video>
+    
+        {#if isLoading}
+          <div class="absolute flex place-content-center place-items-center">
+            <LoadingSpinner />
+          </div>
+        {/if}
+    
+        {#if isFaceEditMode.value}
+          <FaceEditor htmlElement={videoPlayer} {containerWidth} {containerHeight} {assetId} />
+        {/if}
+    
+        <!-- Skip Backward Button with hold functionality --> 
+        <div class="z-[1001] fixed left-0 bottom-[20%]">
+          <button 
+            class="bg-transparent text-white rounded-full p-2"
+            onmousedown={startBackwardSkip}
+            onmouseup={stopBackwardSkip}
+            onmouseleave={stopBackwardSkip}
+            ontouchstart={startBackwardSkip}
+            ontouchend={stopBackwardSkip}
+          >
+            ⏪ Skip
+          </button>
+        </div>
+    
+        <!-- Skip Forward Button with hold functionality -->
+        <div class="z-[1001] fixed left-0 bottom-[88%]">
+          <button 
+            class="bg-transparent text-white rounded-full p-2"
+            onmousedown={startForwardSkip}
+            onmouseup={stopForwardSkip}
+            onmouseleave={stopForwardSkip}
+            ontouchstart={startForwardSkip}
+            ontouchend={stopForwardSkip}
+          >
+            Skip ⏩
+          </button>
+        </div>
+        
+    <!-- Preset Tags Quick Access Panel - Left side of the video -->
+    {#if isOwner && asset?.id && !isSharedLink()}
+    <div class="z-[1001] fixed left-2 bottom-77">
+      <div class="flex flex-col gap-1">
+        {#each presetTags as presetTag (presetTag.id)}
+        <button
+        type="button"
+        class={`px-2 py-1 rounded-lg text-white text-opacity-50 transition-all flex items-center gap-1 ${isPresetTagSelected(presetTag.value) ? 'bg-immich-primary' : 'bg-black bg-opacity-5 hover:bg-immich-primary/50'}`}
+        onclick={() => togglePresetTag(presetTag.value)}
+      >
+        <Icon path={mdiTag} size="0.6rem" />
+        <span class="text-xs font-medium text-opacity-50">{presetTag.value}</span>
+      </button>
+        {/each}
+      </div>
+    </div>
+  {/if}
+        
+        <!-- Custom progress bar - shows only when showControls is true -->
+        {#if showControls}
+          <div 
+          class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-40 px-2 py-1 transition-opacity mx-auto max-w-[80%]"
+          transition:fade={{ duration: 150 }}
+          >
+            <div 
+              class="relative h-2 bg-gray-600 rounded cursor-pointer"
+              onmousedown={handleProgressBarClick}
+              ontouchstart={handleProgressBarClick}
+            >
+              <div 
+                class="absolute top-0 left-0 h-full bg-immich-primary rounded"
+                style={`width: ${progress}%`}
+              ></div>
+            </div>
+            
+            <!-- Time indicator -->
+            <div class="flex justify-between text-xs text-white mt-1">
+              <span>{formatTime(currentTime)}</span>
+              <span>{formatTime(duration)}</span>
+            </div>
+          </div>
+        {/if}
+    
+        <!-- Tag Button and Panel section -->
+        {#if isOwner && asset?.id && !isSharedLink()}
+          <div class="z-[1001] fixed left-0 bottom-[80%]">
+            <div class="flex flex-col">
+              <!-- Always visible add tag button -->
+              <button
+                type="button"
+                class="bg-immich-primary text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1 hover:bg-immich-primary/80 transition-all"
+                title="Add tag"
+                onclick={handleAddTag}
+              >
+                <Icon path={mdiPlus} size="0.75rem" />
+                <span class="text-xs">Add Tag</span>
+              </button>
+              
+              <!-- Toggle for existing tags -->
+              {#if tags.length > 0}
+              <button 
+              type="button"
+              class="bg-black bg-opacity-40 text-white text-opacity-5 rounded-full px-3 py-1 mb-2 flex items-center gap-1"
+              title="Toggle Tags"
+              onclick={toggleTagsPanel}
+            >
+              <span class="text-xs text-opacity-5">View Tags {showTagsPanel ? '▲' : '▼'}</span>
+            </button>
+              {/if}
+              
+              {#if showTagsPanel && tags.length > 0}
+                <!-- Reduced max-width from 300px to 200px -->
+                <div class="bg-black bg-opacity-5 rounded p-2 max-w-[200px]">
+                  <div class="flex flex-wrap gap-1">
+                    {#each tags as tag (tag.id)}
+                      <div class="flex group transition-all">
+                        <a
+                          class="inline-block h-min whitespace-nowrap pl-2 pr-1 py-0.5 text-center align-baseline leading-none text-gray-100 bg-immich-primary rounded-tl-full rounded-bl-full hover:bg-immich-primary/80 transition-all"
+                          href={encodeURI(`${AppRoute.TAGS}/?path=${tag.value}`)}
+                        >
+                        <p class="text-xs text-opacity-50">
+                          {tag.value}
+                        </p>
+                        </a>
+    
+                        <button
+                          type="button"
+                          class="text-gray-100 bg-immich-primary/95 rounded-tr-full rounded-br-full place-items-center place-content-center pr-1 pl-0.5 py-0.5 hover:bg-immich-primary/80 transition-all"
+                          title="Remove tag"
+                          onclick={() => handleRemoveTag(tag.id)}
+                        >
+                          <Icon path={mdiClose} size="0.75rem" />
+                        </button>
+                      </div>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
+            </div>
+          </div>
+        {/if}
+      </div>
+    </div>
+    
+    {#if isTagFormOpen}
+      <Portal>
+        <TagAssetForm onTag={(tagsIds) => handleTag(tagsIds)} onCancel={handleCancelTag} />
+      </Portal>
+    {/if}
+++ b/web/src/lib/components/forms/tag-asset-form.svelte
+<!-- <script lang="ts">
+</FullScreenModal> -->
+
+
+
+
+<script lang="ts">
+  import { mdiClose, mdiTag } from '@mdi/js';
+  import { t } from 'svelte-i18n';
+  import Button from '../elements/buttons/button.svelte';
+  import Combobox, { type ComboBoxOption } from '../shared-components/combobox.svelte';
+  import FullScreenModal from '../shared-components/full-screen-modal.svelte';
+  import { onMount } from 'svelte';
+  import { getAllTags, upsertTags, type TagResponseDto } from '@immich/sdk';
+  import Icon from '$lib/components/elements/icon.svelte';
+  import { SvelteSet } from 'svelte/reactivity';
+
+  interface Props {
+    onTag: (tagIds: string[]) => void;
+    onCancel: () => void;
+  }
+
+  let { onTag, onCancel }: Props = $props();
+
+  let allTags: TagResponseDto[] = $state([]);
+  let tagMap = $derived(Object.fromEntries(allTags.map((tag) => [tag.id, tag])));
+  let selectedIds = new SvelteSet<string>();
+  let disabled = $derived(selectedIds.size === 0);
+  let allowCreate: boolean = $state(true);
+  
+  let formElement: HTMLFormElement;
+
+  onMount(async () => {
+    allTags = await getAllTags();
+    
+    setTimeout(() => {
+      document.addEventListener('click', handleOutsideClick);
+    }, 100);
+  });
+  
+  const onDestroy = () => {
+    document.removeEventListener('click', handleOutsideClick);
+  };
+  
+  const handleOutsideClick = (event: MouseEvent) => {
+    if (formElement && !formElement.contains(event.target as Node)) {
+      if (selectedIds.size > 0) {
+        handleSubmit();
+      } else {
+        onCancel();
+      }
+      
+      document.removeEventListener('click', handleOutsideClick);
+    }
+  };
+
+  const handleSubmit = () => onTag([...selectedIds]);
+
+  const handleSelect = async (option?: ComboBoxOption) => {
+    if (!option) {
+      return;
+    }
+
+    if (option.id) {
+      selectedIds.add(option.value);
+    } else {
+      const [newTag] = await upsertTags({ tagUpsertDto: { tags: [option.label] } });
+      allTags.push(newTag);
+      selectedIds.add(newTag.id);
+    }
+  };
+
+  const handleRemove = (tag: string) => {
+    selectedIds.delete(tag);
+  };
+
+  const onsubmit = (event: Event) => {
+    event.preventDefault();
+    handleSubmit();
+  };
+</script>
+
+<FullScreenModal title={$t('tag_assets')} icon={mdiTag} onClose={onCancel}>
+  <form {onsubmit} autocomplete="off" id="create-tag-form" bind:this={formElement}>
+    <div class="my-4 flex flex-col gap-2">
+      <Combobox
+        onSelect={handleSelect}
+        label={$t('tag')}
+        {allowCreate}
+        defaultFirstOption
+        options={allTags.map((tag) => ({ id: tag.id, label: tag.value, value: tag.id }))}
+        placeholder={$t('search_tags')}
+      />
+    </div>
+  </form>
+
+  <section class="flex flex-wrap pt-2 gap-1">
+    {#each selectedIds as tagId (tagId)}
+      {@const tag = tagMap[tagId]}
+      {#if tag}
+        <div class="flex group transition-all">
+          <span
+            class="inline-block h-min whitespace-nowrap pl-3 pr-1 group-hover:pl-3 py-1 text-center align-baseline leading-none text-gray-100 dark:text-immich-dark-gray bg-immich-primary dark:bg-immich-dark-primary rounded-tl-full rounded-bl-full hover:bg-immich-primary/80 dark:hover:bg-immich-dark-primary/80 transition-all"
+          >
+            <p class="text-sm">
+              {tag.value}
+            </p>
+          </span>
+
+          <button
+            type="button"
+            class="text-gray-100 dark:text-immich-dark-gray bg-immich-primary/95 dark:bg-immich-dark-primary/95 rounded-tr-full rounded-br-full place-items-center place-content-center pr-2 pl-1 py-1 hover:bg-immich-primary/80 dark:hover:bg-immich-dark-primary/80 transition-all"
+            title="Remove tag"
+            onclick={() => handleRemove(tagId)}
+          >
+            <Icon path={mdiClose} />
+          </button>
+        </div>
+      {/if}
+    {/each}
+  </section>
+
+  {#snippet stickyBottom()}
+    <Button color="gray" fullwidth onclick={onCancel}>{$t('cancel')}</Button>
+    <Button type="submit" fullwidth form="create-tag-form" {disabled}>{$t('tag_assets')}</Button>
+  {/snippet}
+</FullScreenModal>
+++ b/web/src/lib/components/photos-page/actions/favorite-action.svelte
+  let text = $derived(removeFavorite ? $t('reeeee_favorites') : $t('to_favorite'));
+          ? $t('addfavorite_count', { values: { count: ids.length } })
+          : $t('removedfavorites_count', { values: { count: ids.length } }),
+++ b/web/src/lib/components/shared-components/scrubber/scrubber.svelte
+    startScrub = undefined,  
+  let touchStartY = $state(0);
+  let touchStartTime = $state(0);
+  let hasMovedEnough = $state(false);
+  const DRAG_THRESHOLD = 10; // pixels to move before considering it a drag
+  const TAP_THRESHOLD = 300; // milliseconds to differentiate between tap and drag
+
+
+  
+
+
+
+
+  const touch = getTouch(event);
+  if (!touch) {
+    isHover = false;
+    return;
+  }
+
+
+  touchStartY = touch.clientY;
+  touchStartTime = Date.now();
+  hasMovedEnough = false;
+
+
+  const elements = document.elementsFromPoint(touch.clientX, touch.clientY);
+  const isHoverScrollbar = elements.some(({ id }) => {
+    return id === 'immich-scrubbable-scrollbar' || id === 'time-label';
+  });
+
+  isHover = isHoverScrollbar;
+  
+  if (isHoverScrollbar) {
+    handleMouseEvent({
+      clientY: touch.clientY,
+      isDragging: false // Change this to false initially
+  }
+};
+
+
+const onTouchMove = (event: TouchEvent) => {
+  const touch = getTouch(event);
+  if (!touch) return;
+  
+  if (isHover) {
+    const moveDistance = Math.abs(touch.clientY - touchStartY);
+    
+    if (!isDragging && moveDistance > DRAG_THRESHOLD) {
+      hasMovedEnough = true;
+        isDragging: true
+    } else if (isDragging) {
+        clientY: touch.clientY
+  } else {
+    isHover = false;
+  }
+};
+
+const onTouchEnd = (event: TouchEvent) => {
+  const elapsedTime = Date.now() - touchStartTime;
+  
+  if (elapsedTime < TAP_THRESHOLD && !hasMovedEnough) {
+    isDragging = false;
+    isHover = false;
+  } else if (isHover) {
+    isHover = false;
+  }
+  
+  if (isDragging) {
+    handleMouseEvent({
+      clientY,
+      isDragging: false
+    });
+  }
+};
+++ b/web/src/lib/constants.ts
+
+++ b/web/src/lib/stores/assets-store.svelte.ts
+
+
+
+
+
+
+
+
+
+
+  tagIds?: string[];  // Add this
+  isFavorite?: boolean; // Add this
+
+
+
+
+
+
+
+
+
+    console.log("Initializing asset store with options:", JSON.stringify(options));
+
+++ b/web/src/lib/stores/preferences.store.ts
+  SizeAsc = "sizeAsc", 
+  SizeDesc = "sizeDesc"
+++ b/web/src/routes/(user)/albums/[albumId=id]/[[photos=photos]]/[[assetId=id]]/+page.svelte
+
+
+
+
+
+
+  import Combobox from '$lib/components/shared-components/combobox.svelte';
+  import { SvelteSet } from 'svelte/reactivity';
+  import FilterBar from '$lib/components/shared-components/filter-bar.svelte'; // You may need
+
+    let selectedTags = $state(new SvelteSet<string>());
+    let isStarred = $state(false);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+$effect(() => {
+  if (viewMode === AlbumPageViewMode.VIEW) {
+    const tagIdsArray = selectedTags.size > 0 ? Array.from(selectedTags) : undefined;
+    
+    console.log("Updating asset store with filters:", {
+      albumId,
+      tagIds: tagIdsArray,
+      isFavorite: isStarred
+    });
+    
+    void assetStore.updateOptions({ 
+      albumId, 
+      order: albumOrder,
+      tagIds: tagIdsArray,
+      isFavorite: isStarred, // Pass the boolean directly
+    });
+  } else if (viewMode === AlbumPageViewMode.SELECT_ASSETS) {
+    void assetStore.updateOptions({ isArchived: false, withPartners: true, timelineAlbumId: albumId });
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+          <!-- 888999888 -->
+          {#if album.assetCount > 0 && viewMode === AlbumPageViewMode.VIEW}
+            <section class="mt-4">
+              <FilterBar bind:selectedTags bind:isStarred />
+            </section>
+          {/if}
+
+
+
+
+
+

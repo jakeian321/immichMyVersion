@@ -88,6 +88,41 @@
   import TagAction from '$lib/components/photos-page/actions/tag-action.svelte';
   import { AssetInteraction } from '$lib/stores/asset-interaction.svelte';
 
+
+
+
+
+
+
+  //888999888
+  // Add these imports along with your existing imports
+  import Combobox from '$lib/components/shared-components/combobox.svelte';
+  import { SvelteSet } from 'svelte/reactivity';
+  import FilterBar from '$lib/components/shared-components/filter-bar.svelte'; // You may need
+
+    // Add these variables to your state declarations
+    let selectedTags = $state(new SvelteSet<string>());
+    let isStarred = $state(false);
+    // Add other filter states as needed
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   interface Props {
     data: PageData;
   }
@@ -405,13 +440,71 @@
 
   let assetStore = new AssetStore();
 
-  $effect(() => {
-    if (viewMode === AlbumPageViewMode.VIEW) {
-      void assetStore.updateOptions({ albumId, order: albumOrder });
-    } else if (viewMode === AlbumPageViewMode.SELECT_ASSETS) {
-      void assetStore.updateOptions({ isArchived: false, withPartners: true, timelineAlbumId: albumId });
-    }
-  });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  //commented this original out 888999888
+
+  // $effect(() => {
+  //   if (viewMode === AlbumPageViewMode.VIEW) {
+  //     void assetStore.updateOptions({ albumId, order: albumOrder });
+  //   } else if (viewMode === AlbumPageViewMode.SELECT_ASSETS) {
+  //     void assetStore.updateOptions({ isArchived: false, withPartners: true, timelineAlbumId: albumId });
+  //   }
+  // });
+
+
+//added this 888999888
+$effect(() => {
+  if (viewMode === AlbumPageViewMode.VIEW) {
+    // Convert Set to Array consistently
+    const tagIdsArray = selectedTags.size > 0 ? Array.from(selectedTags) : undefined;
+    console.log("Selected tags updated in album page:", tagIdsArray);
+
+    console.log("Updating asset store with filters:", {
+      albumId,
+      tagIds: tagIdsArray,
+      isFavorite: isStarred
+    });
+    
+      void assetStore.updateOptions({ 
+      albumId, 
+      order: albumOrder,
+      tagIds: tagIdsArray,
+      isFavorite: isStarred
+    });
+  } else if (viewMode === AlbumPageViewMode.SELECT_ASSETS) {
+    void assetStore.updateOptions({ isArchived: false, withPartners: true, timelineAlbumId: albumId });
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   onDestroy(() => assetStore.destroy());
   // let timelineStore = new AssetStore();
   // $effect(() => void timelineStore.updateOptions({ isArchived: false, withPartners: true, timelineAlbumId: albumId }));
@@ -687,6 +780,14 @@
             </section>
           {/if}
 
+          <!-- 888999888 -->
+          {#if album.assetCount > 0 && viewMode === AlbumPageViewMode.VIEW}
+            <section class="mt-4">
+              <FilterBar bind:selectedTags bind:isStarred />
+            </section>
+          {/if}
+
+
           {#if album.assetCount === 0}
             <section id="empty-album" class=" mt-[200px] flex place-content-center place-items-center">
               <div class="w-[300px]">
@@ -794,3 +895,7 @@
     color: white;
   }
 </style>
+
+
+
+

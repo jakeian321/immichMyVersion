@@ -47,8 +47,10 @@ export enum AlbumUserRole {
 }
 
 export enum AssetOrder {
-  ASC = 'asc',
-  DESC = 'desc',
+  Asc = "asc",
+  Desc = "desc",
+  SizeAsc = "sizeAsc",
+  SizeDesc = "sizeDesc"
 }
 
 export enum DatabaseAction {

@@ -117,6 +117,8 @@ export interface SidebarSettings {
 export enum SortOrder {
   Asc = 'asc',
   Desc = 'desc',
+  SizeAsc = "sizeAsc", 
+  SizeDesc = "sizeDesc"
 }
 
 export enum AlbumViewMode {

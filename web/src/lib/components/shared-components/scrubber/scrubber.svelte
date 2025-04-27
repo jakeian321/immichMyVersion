@@ -35,7 +35,7 @@
     leadout = false,
     onScrub = undefined,
     onScrubKeyDown = undefined,
-    startScrub = undefined,
+    startScrub = undefined,  
     stopScrub = undefined,
   }: Props = $props();
 
@@ -45,6 +45,12 @@
   let clientY = 0;
   let windowHeight = $state(0);
   let scrollBar: HTMLElement | undefined = $state();
+    // Add these state variables at the top with your other state variables 888999888
+  let touchStartY = $state(0);
+  let touchStartTime = $state(0);
+  let hasMovedEnough = $state(false);
+  const DRAG_THRESHOLD = 10; // pixels to move before considering it a drag
+  const TAP_THRESHOLD = 300; // milliseconds to differentiate between tap and drag
 
   const toScrollY = (percent: number) => percent * (height - HOVER_DATE_HEIGHT * 2);
   const toTimelineY = (scrollY: number) => scrollY / (height - HOVER_DATE_HEIGHT * 2);
@@ -218,46 +224,131 @@
     }
     return null;
   };
+
+
+  
+
+  // const onTouchStart = (event: TouchEvent) => {
+  //   const touch = getTouch(event);
+  //   if (!touch) {
+  //     isHover = false;
+  //     return;
+  //   }
+  //   const elements = document.elementsFromPoint(touch.clientX, touch.clientY);
+  //   const isHoverScrollbar = elements.some(({ id }) => {
+  //     return id === 'immich-scrubbable-scrollbar' || id === 'time-label';
+  //   });
+
+  //   isHover = isHoverScrollbar;
+
+  //   if (isHoverScrollbar) {
+  //     handleMouseEvent({
+  //       clientY: touch.clientY,
+  //       isDragging: true,
+  //     });
+  //   }
+  // };
+
   const onTouchStart = (event: TouchEvent) => {
-    const touch = getTouch(event);
-    if (!touch) {
-      isHover = false;
-      return;
-    }
-    const elements = document.elementsFromPoint(touch.clientX, touch.clientY);
-    const isHoverScrollbar = elements.some(({ id }) => {
-      return id === 'immich-scrubbable-scrollbar' || id === 'time-label';
-    });
+  const touch = getTouch(event);
+  if (!touch) {
+    isHover = false;
+    return;
+  }
 
-    isHover = isHoverScrollbar;
 
-    if (isHoverScrollbar) {
-      handleMouseEvent({
-        clientY: touch.clientY,
-        isDragging: true,
-      });
-    }
-  };
-  const onTouchEnd = () => {
-    if (isHover) {
-      isHover = false;
-    }
+  // Store initial touch position and time
+  touchStartY = touch.clientY;
+  touchStartTime = Date.now();
+  hasMovedEnough = false;
+
+
+  const elements = document.elementsFromPoint(touch.clientX, touch.clientY);
+  const isHoverScrollbar = elements.some(({ id }) => {
+    return id === 'immich-scrubbable-scrollbar' || id === 'time-label';
+  });
+
+  isHover = isHoverScrollbar;
+  
+  // Don't immediately start dragging - just record that we're hovering
+  if (isHoverScrollbar) {
     handleMouseEvent({
-      clientY,
-      isDragging: false,
+      clientY: touch.clientY,
+      isDragging: false // Change this to false initially
     });
-  };
-  const onTouchMove = (event: TouchEvent) => {
-    const touch = getTouch(event);
-    if (touch && isDragging) {
+  }
+};
+
+
+
+
+// Modify your onTouchMove to check if we've moved enough to consider it a drag
+const onTouchMove = (event: TouchEvent) => {
+  const touch = getTouch(event);
+  if (!touch) return;
+  
+  if (isHover) {
+    // Check if we've moved enough to consider it a drag
+    const moveDistance = Math.abs(touch.clientY - touchStartY);
+    
+    if (!isDragging && moveDistance > DRAG_THRESHOLD) {
+      hasMovedEnough = true;
+      // Now start dragging
       handleMouseEvent({
         clientY: touch.clientY,
+        isDragging: true
+      });
+    } else if (isDragging) {
+      handleMouseEvent({
+        clientY: touch.clientY
       });
       event.preventDefault();
-    } else {
-      isHover = false;
     }
-  };
+  } else {
+    isHover = false;
+  }
+};
+
+// Modify your onTouchEnd to check if it was a tap or a drag
+const onTouchEnd = (event: TouchEvent) => {
+  const elapsedTime = Date.now() - touchStartTime;
+  
+  // If it was a quick tap without much movement, don't trigger a scroll
+  if (elapsedTime < TAP_THRESHOLD && !hasMovedEnough) {
+    // It was just a tap, not a drag
+    isDragging = false;
+    isHover = false;
+  } else if (isHover) {
+    isHover = false;
+  }
+  
+  if (isDragging) {
+    handleMouseEvent({
+      clientY,
+      isDragging: false
+    });
+  }
+};
+  // const onTouchEnd = () => {
+  //   if (isHover) {
+  //     isHover = false;
+  //   }
+  //   handleMouseEvent({
+  //     clientY,
+  //     isDragging: false,
+  //   });
+  // };
+  // const onTouchMove = (event: TouchEvent) => {
+  //   const touch = getTouch(event);
+  //   if (touch && isDragging) {
+  //     handleMouseEvent({
+  //       clientY: touch.clientY,
+  //     });
+  //     event.preventDefault();
+  //   } else {
+  //     isHover = false;
+  //   }
+  // };
   onMount(() => {
     const opts = {
       passive: false,

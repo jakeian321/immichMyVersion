@@ -35,10 +35,36 @@ const GAP = 12;
 const HEADER = 49; //(1.5rem)
 
 type AssetApiGetTimeBucketsRequest = Parameters<typeof getTimeBuckets>[0];
+
+
+
+
+
+
+
+
+
+
+//88899988
+// export type AssetStoreOptions = Omit<AssetApiGetTimeBucketsRequest, 'size'> & {
+//   timelineAlbumId?: string;
+//   deferInit?: boolean;
+// };
 export type AssetStoreOptions = Omit<AssetApiGetTimeBucketsRequest, 'size'> & {
   timelineAlbumId?: string;
   deferInit?: boolean;
+  tagIds?: string[];  // Add this
+  isFavorite?: boolean; // Add this
 };
+
+
+
+
+
+
+
+
+
 export type AssetStoreLayoutOptions = {
   rowHeight: number;
 };
@@ -711,6 +737,7 @@ export class AssetStore {
       }
     }
   }
+  
 
   updateSlidingWindow(scrollTop: number) {
     this.#scrollTop = scrollTop;
@@ -768,16 +795,64 @@ export class AssetStore {
   }
 
   async #initialiazeTimeBuckets() {
-    const timebuckets = await getTimeBuckets({
-      ...this.#options,
+    const params = new URLSearchParams();
+    
+    // Add existing options to params
+    if (this.#options.albumId) {
+      params.append('albumId', this.#options.albumId);
+    }
+    if (this.#options.personId) {
+      params.append('personId', this.#options.personId);
+    }
+    if (this.#options.isArchived !== undefined) {
+      params.append('isArchived', String(this.#options.isArchived));
+    }
+    if (this.#options.isFavorite !== undefined) {
+      params.append('isFavorite', String(this.#options.isFavorite));
+    }
+    if (this.#options.isTrashed !== undefined) {
+      params.append('isTrashed', String(this.#options.isTrashed));
+    }
+    
+    // Add tag filtering logic
+    if (this.#options.tagIds && this.#options.tagIds.length > 0) {
+      // For multiple values with the same parameter name:
+      this.#options.tagIds.forEach(tagId => {
+        params.append('tagIds', tagId);
+      });
+      console.log("Added tagIds to params:", this.#options.tagIds);
+    }
+    
+    const queryString = params.toString();
+    console.log("Timeline query string:", queryString);
+    
+    // Create an object with all the necessary parameters
+    const fullOptions = {
+      // Include core parameters
       size: TimeBucketSize.Month,
       key: getKey(),
-    });
-
+      
+      // Include all filter parameters from options
+      albumId: this.#options.albumId,
+      personId: this.#options.personId,
+      isArchived: this.#options.isArchived,
+      isFavorite: this.#options.isFavorite,
+      isTrashed: this.#options.isTrashed,
+      order: this.#options.order,
+      
+      // Explicitly include tagIds from options
+      tagIds: this.#options.tagIds
+    };
+    
+    console.log("Calling getTimeBuckets with options:", fullOptions);
+    
+    const timebuckets = await getTimeBuckets(fullOptions);
+    
     this.buckets = timebuckets.map((bucket) => {
       const utcDate = DateTime.fromISO(bucket.timeBucket).toUTC();
       return new AssetBucket(this, utcDate, bucket.count, this.#options.order);
     });
+    
     this.albumAssets.clear();
     this.#updateViewportGeometry(false);
   }
@@ -789,6 +864,8 @@ export class AssetStore {
    * @param options The query options for time bucket queries.
    */
   async updateOptions(options: AssetStoreOptions) {
+    console.log("Updating options with:", JSON.stringify(options));
+
     if (options.deferInit) {
       return;
     }
@@ -807,6 +884,8 @@ export class AssetStore {
 
   async #init(options: AssetStoreOptions) {
     // doing the following outside of the task reduces flickr
+    console.log("Initializing asset store with options:", JSON.stringify(options));
+
     this.isInitialized = false;
     this.buckets = [];
     this.albumAssets.clear();
@@ -1286,6 +1365,8 @@ export class AssetStore {
       isMismatched(this.#options.isTrashed, asset.isTrashed)
     );
   }
+
+  
 }
 
 export const isSelectingAllAssets = writable(false);

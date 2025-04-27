@@ -46,10 +46,10 @@
       await deleteAssets({ assetBulkDeleteDto: { ids: [asset.id] } });
       onAction({ type: AssetAction.TRASH, asset });
 
-      notificationController.show({
-        message: $t('moved_to_trash'),
-        type: NotificationType.Info,
-      });
+      // notificationController.show({
+      //   message: $t('trash'),
+      //   type: NotificationType.Info,
+      // });
     } catch (error) {
       handleError(error, $t('errors.unable_to_trash_asset'));
     }

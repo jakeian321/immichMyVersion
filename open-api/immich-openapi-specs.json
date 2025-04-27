@@ -10167,6 +10167,13 @@
       },
       "MetadataSearchDto": {
         "properties": {
+          "albumIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
           "checksum": {
             "type": "string"
           },
@@ -10867,6 +10874,13 @@
       },
       "RandomSearchDto": {
         "properties": {
+          "albumIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
           "city": {
             "nullable": true,
             "type": "string"
@@ -11815,6 +11829,13 @@
       },
       "SmartSearchDto": {
         "properties": {
+          "albumIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
           "city": {
             "nullable": true,
             "type": "string"

@@ -14,7 +14,7 @@
 
   let showModal = $state(false);
 </script>
-
+<!--
 <CircleIconButton color="opaque" icon={mdiShareVariantOutline} onclick={() => (showModal = true)} title={$t('share')} />
 
 {#if showModal}
@@ -22,3 +22,4 @@
     <CreateSharedLinkModal assetIds={[asset.id]} onClose={() => (showModal = false)} />
   </Portal>
 {/if}
+-->

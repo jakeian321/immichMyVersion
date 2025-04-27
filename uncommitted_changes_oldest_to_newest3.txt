@@ -1,3 +1,331 @@
+
+
+
+
+
+
+
+
+
+import { ApiProperty } from '@nestjs/swagger';
+import { Transform, Type } from 'class-transformer';
+import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
+import { AssetOrder, AssetType, TimeBucketSize } from 'src/enum';
+import { ValidateUUID } from 'src/validators';
+
+export class TimeBucketDto {
+  @IsOptional()
+  @ValidateUUID()
+  @ApiProperty({ type: 'string' })
+  albumId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  @ApiProperty()
+  withStacked?: boolean;
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  @ApiProperty()
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  @ApiProperty()
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  @ApiProperty()
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  @ApiProperty()
+  @IsOptional()
+  @ApiProperty({ enum: AssetOrder })
+  @IsOptional()
+  @IsEnum(TimeBucketSize)
+  @Transform(({ value }) => (typeof value === 'string' ? value.toUpperCase() : value))
+  @ApiProperty({ enum: TimeBucketSize })
+  size?: TimeBucketSize;
+
+  @IsOptional()
+  @IsEnum(AssetType)
+  @ApiProperty({ enum: AssetType })
+  assetType?: AssetType;
+
+  @IsOptional()
+  @ValidateUUID()
+  @ApiProperty({ type: 'string' })
+  userId?: string;
+
+  @IsOptional()
+  @ValidateUUID()
+  @ApiProperty({ type: 'string' })
+  personId?: string;
+
+  @IsOptional()
+  @ApiProperty()
+  key?: string;
+  @IsOptional()
+  @ValidateUUID()
+  tagId?: string;
+
+  @IsOptional()
+  @ValidateUUID({ each: true, optional: true })
+  @ApiProperty({ type: 'string', isArray: true })
+  tagIds?: string[];
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  @ApiProperty()
+  isDuplicate?: boolean;
+}
+++ b/server/src/repositories/asset.repository.ts
+  tagIds?: string[];
+  tagIds?: string[]; // Add it here if not in AssetBuilderOptions
+
+
+
+
+
+
+
+
+
+
+
+
+
+  async getByAlbumId(
+    albumId: string, 
+    options: {
+      order?: AssetOrder;
+      tagIds?: string[];
+      isFavorite?: boolean;
+    } = {},
+    pagination: PaginationOptions = { take: 100 }
+  ): Paginated<AssetEntity> {
+    console.log("Album ID:", albumId);
+    console.log("Filter options:", JSON.stringify(options));
+    
+    let query = withAlbums(this.db.selectFrom('assets'), { albumId })
+      .selectAll('assets')
+      .where('deletedAt', 'is', null);
+
+
+    if (options.tagIds && options.tagIds.length > 0) {
+      query = query.where(eb => {
+        return eb.exists(
+          eb.selectFrom('asset_tags')
+            .select(1)
+            .whereRef('asset_tags.assetId', '=', 'assets.id')
+            .where('asset_tags.tagId', 'in', options.tagIds)
+        );
+      });
+    }
+    
+    
+    if (options.isFavorite !== undefined) {
+      query = query.where('assets.isFavorite', '=', options.isFavorite);
+      console.log("SQL favorite filtering applied:", options.isFavorite);
+    }
+    
+    if (options.order === AssetOrder.NEWEST) {
+      query = query.orderBy('assets.fileCreatedAt', 'desc');
+    } else if (options.order === AssetOrder.OLDEST) {
+      query = query.orderBy('assets.fileCreatedAt', 'asc');
+    } else {
+      query = query.orderBy('assets.fileCreatedAt', 'desc');
+    }
+  
+    console.log("Generated SQL query:", query.toSQL ? query.toSQL() : "SQL query not available");
+    
+    const items = await query.execute();
+    console.log(`Found ${items.length} assets after filtering`);
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+async getTimeBuckets(options: TimeBucketOptions): Promise<TimeBucketItem[]> {
+  return (
+    this.db
+      .with('assets', (qb) =>
+          .selectFrom('assets')
+          .select(truncatedDate<Date>(options.size).as('timeBucket'))
+          .$if(!!options.isTrashed, (qb) => qb.where('assets.status', '!=', AssetStatus.DELETED))
+          .where('assets.deletedAt', options.isTrashed ? 'is not' : 'is', null)
+          .where('assets.isVisible', '=', true)
+          .where('assets.fileCreatedAt', 'is not', null)
+          .where('assets.fileModifiedAt', 'is not', null)
+          .where('assets.localDateTime', 'is not', null)
+          .$if(!!options.albumId, (qb) =>
+            qb
+              .innerJoin('albums_assets_assets', 'assets.id', 'albums_assets_assets.assetsId')
+              .where('albums_assets_assets.albumsId', '=', asUuid(options.albumId!)),
+          .$if(!!options.personId, (qb) => hasPeople(qb, [options.personId!]))
+          .$if(!!options.withStacked, (qb) =>
+            qb
+              .leftJoin('asset_stack', (join) =>
+                join
+                  .onRef('asset_stack.id', '=', 'assets.stackId')
+                  .onRef('asset_stack.primaryAssetId', '=', 'assets.id'),
+              )
+              .where((eb) => eb.or([eb('assets.stackId', 'is', null), eb(eb.table('asset_stack'), 'is not', null)])),
+          .$if(!!options.userIds, (qb) => qb.where('assets.ownerId', '=', anyUuid(options.userIds!)))
+          .$if(options.isArchived !== undefined, (qb) => qb.where('assets.isArchived', '=', options.isArchived!))
+          .$if(options.isFavorite !== undefined, (qb) => qb.where('assets.isFavorite', '=', options.isFavorite!))
+          .$if(!!options.assetType, (qb) => qb.where('assets.type', '=', options.assetType!))
+          .$if(options.isDuplicate !== undefined, (qb) =>
+            qb.where('assets.duplicateId', options.isDuplicate ? 'is not' : 'is', null),
+          )
+          .$if(!!options.tagId, (qb) => withTagId(qb, options.tagId!))
+          .$if(!!options.tagIds && options.tagIds.length > 0, (qb) => {
+            console.log("Filtering timeline buckets by tagIds:", options.tagIds);
+            return qb.where(eb => {
+              return eb.exists(
+                eb.selectFrom('asset_tags')
+                  .select(1)
+                  .whereRef('asset_tags.assetId', '=', 'assets.id')
+                  .where('asset_tags.tagId', 'in', options.tagIds!)
+              );
+            });
+          })
+      .selectFrom('assets')
+      .select('timeBucket')
+      TODO: the above line outputs in ISO format, which bloats the response.
+      The line below outputs in YYYY-MM-DD format, but needs a change in the web app to work.
+        .select(sql<string>`"timeBucket"::date::text`.as('timeBucket'))
+      */
+      .select((eb) => eb.fn.countAll<number>().as('count'))
+      .groupBy('timeBucket')
+      .orderBy('timeBucket', options.order ?? 'desc')
+      .execute() as any as Promise<TimeBucketItem[]>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@GenerateSql({ params: [DummyValue.TIME_BUCKET, { size: TimeBucketSize.MONTH, withStacked: true }] })
+async getTimeBucket(timeBucket: string, options: TimeBucketOptions): Promise<AssetEntity[]> {
+  return this.db
+    .selectFrom('assets')
+    .selectAll('assets')
+    .$call(withExif)
+    .$if(!!options.albumId, (qb) => withAlbums(qb, { albumId: options.albumId }))
+    .$if(!!options.personId, (qb) => hasPeople(qb, [options.personId!]))
+    .$if(!!options.userIds, (qb) => qb.where('assets.ownerId', '=', anyUuid(options.userIds!)))
+    .$if(options.isArchived !== undefined, (qb) => qb.where('assets.isArchived', '=', options.isArchived!))
+    .$if(options.isFavorite !== undefined, (qb) => qb.where('assets.isFavorite', '=', options.isFavorite!))
+    .$if(!!options.withStacked, (qb) =>
+      qb
+        .leftJoin('asset_stack', 'asset_stack.id', 'assets.stackId')
+        .where((eb) =>
+          eb.or([eb('asset_stack.primaryAssetId', '=', eb.ref('assets.id')), eb('assets.stackId', 'is', null)]),
+        )
+        .leftJoinLateral(
+          (eb) =>
+            eb
+              .selectFrom('assets as stacked')
+              .selectAll('asset_stack')
+              .select((eb) => eb.fn.count(eb.table('stacked')).as('assetCount'))
+              .whereRef('stacked.stackId', '=', 'asset_stack.id')
+              .where('stacked.deletedAt', 'is', null)
+              .where('stacked.isArchived', '=', false)
+              .groupBy('asset_stack.id')
+              .as('stacked_assets'),
+          (join) => join.on('asset_stack.id', 'is not', null),
+        )
+        .select((eb) => eb.fn.toJson(eb.table('stacked_assets')).as('stack')),
+    )
+    .$if(!!options.assetType, (qb) => qb.where('assets.type', '=', options.assetType!))
+    .$if(options.isDuplicate !== undefined, (qb) =>
+      qb.where('assets.duplicateId', options.isDuplicate ? 'is not' : 'is', null),
+    )
+    .$if(!!options.isTrashed, (qb) => qb.where('assets.status', '!=', AssetStatus.DELETED))
+    .$if(!!options.tagId, (qb) => withTagId(qb, options.tagId!))
+    .$if(!!options.tagIds && options.tagIds.length > 0, (qb) => {
+      console.log("Filtering timeline bucket by tagIds:", options.tagIds);
+      return qb.where(eb => {
+        return eb.exists(
+          eb.selectFrom('asset_tags')
+            .select(1)
+            .whereRef('asset_tags.assetId', '=', 'assets.id')
+            .where('asset_tags.tagId', 'in', options.tagIds!)
+        );
+      });
+    })
+    .where('assets.deletedAt', options.isTrashed ? 'is not' : 'is', null)
+    .where('assets.isVisible', '=', true)
+    .where(truncatedDate(options.size), '=', timeBucket.replace(/^[+-]/, ''))
+    .orderBy('assets.localDateTime', options.order ?? 'desc')
+    .execute() as any as Promise<AssetEntity[]>;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+++ b/server/src/services/timeline.service.ts
+import { AssetBuilderOptions, TimeBucketOptions } from 'src/repositories/asset.repository';
+    const options: TimeBucketOptions = { ...dto };
+  
+    if (dto.userId) {
+      userIds = [dto.userId];
+      
+      options.userIds = userIds;
+    if (dto.tagIds && dto.tagIds.length > 0) {
+      options.tagIds = dto.tagIds;
+      console.log("Including tagIds in timeline options:", dto.tagIds);
+    }
+  
+    return options;
+    
+    if (dto.tagIds && dto.tagIds.length > 0) {
+      await this.requireAccess({ auth, permission: Permission.TAG_READ, ids: dto.tagIds });
+    }
+}
+++ b/web/src/lib/components/asset-viewer/asset-viewer.svelte
+    <!-- commented out this 888999888 and added line 461 <div class="z-[1001] my-auto column-span-1 col-start-1 row-span-full row-start-1 justify-self-start"> -->
+    <div class="z-[1001] fixed left-[0%] bottom-[10%]">
+    <!-- <div class="z-[1001] my-auto col-span-1 col-start-4 row-span-full row-start-1 justify-self-end"> -->
+    <div class="z-[1001] fixed left-[20%] bottom-[88%]">
+++ b/web/src/lib/components/asset-viewer/video-native-viewer.svelte
 <!-- 
     <script lang="ts">
       import LoadingSpinner from '$lib/components/shared-components/loading-spinner.svelte';
@@ -13,7 +341,6 @@
       import { isFaceEditMode } from '$lib/stores/face-edit.svelte';
       import FaceEditor from '$lib/components/asset-viewer/face-editor/face-editor.svelte';
       
-      // Import for tag components
       import Icon from '$lib/components/elements/icon.svelte';
       import TagAssetForm from '$lib/components/forms/tag-asset-form.svelte';
       import Portal from '$lib/components/shared-components/portal/portal.svelte';
@@ -37,7 +364,6 @@
         onVideoEnded?: () => void;
         onVideoStarted?: () => void;
         onClose?: () => void;
-      }
     
       let {
         assetId,
@@ -61,12 +387,10 @@
       let forceMuted = $state(false);
       let isScrubbing = $state(false);
       
-      // Hold-to-skip variables
       let skipForwardInterval: number | null = $state(null);
       let skipBackwardInterval: number | null = $state(null);
       let skipIntervalDelay = 470; // Milliseconds between skips when holding
       
-      // Progress bar variables
       let currentTime = $state(0);
       let duration = $state(0);
       let progress = $state(0);
@@ -74,12 +398,10 @@
       let showControls = $state(true);
       let controlsTimeout: number | null = $state(null);
     
-      // Tags related states
       let tags = $derived(asset?.tags || []);
       let isTagFormOpen = $state(false);
       let showTagsPanel = $state(false);
       
-      // Preset tags with their IDs from the system
       const presetTags = [
       { id: 'preset-low', value: 'low' },
       { id: 'preset-semitop', value: 'semitop' },
@@ -101,10 +423,8 @@
       { id: 'preset-tit', value: 'tit' }
     ];
       
-      // Map to store available tag IDs from the system
       let availableTagsMap = $state<Record<string, string>>({});
       
-      // Track which preset tags are selected for the current asset
       let selectedPresetTags = $state<string[]>([]);
     
       onMount(async () => {
@@ -114,7 +434,6 @@
           videoPlayer.load();
         }
         
-        // Fetch asset info if not provided
         if (!asset?.id && assetId) {
           try {
             asset = await getAssetInfo({ id: assetId });
@@ -123,18 +442,15 @@
           }
         }
         
-        // Initialize selected preset tags based on the asset's current tags
         if (asset?.tags) {
           selectedPresetTags = asset.tags
             .filter(tag => presetTags.some(preset => preset.value === tag.value))
             .map(tag => tag.value);
         }
         
-        // Get all available tags from the system to find IDs for our preset tags
         try {
           const allTags = await getAllTags();
           
-          // Create a mapping of tag values to their IDs
           availableTagsMap = allTags.reduce((map: Record<string, string>, tag) => {
             map[tag.value.toLowerCase()] = tag.id;
             return map;
@@ -143,7 +459,6 @@
           handleError(error, $t('errors.unable_to_load_tags'));
         }
         
-        // Auto-hide controls after 3 seconds
         controlsTimeout = setTimeout(() => {
           showControls = false;
         }, 3000);
@@ -153,10 +468,8 @@
         if (videoPlayer) {
           videoPlayer.src = '';
         }
-        // Clear any intervals when component is destroyed
         clearHoldIntervals();
         
-        // Clear any timeouts
         if (controlsTimeout) {
           clearTimeout(controlsTimeout);
         }
@@ -209,14 +522,11 @@
         }
       };
     
-      // Calculate skip time based on video duration
       const calculateSkipTime = () => {
         if (!videoPlayer) return 0;
         
-        // Calculate skip based on percentage of total duration
         let skipTime = videoPlayer.duration * skipPercentage;
         
-        // Apply min/max constraints
         if (skipTime > maxSkipSeconds) {
           skipTime = maxSkipSeconds;
         } else if (skipTime < minSkipSeconds) {
@@ -226,7 +536,6 @@
         return skipTime;
       };
     
-      // Skip forward in the video
       const skipForward = () => {
         if (!videoPlayer) return;
         
@@ -235,7 +544,6 @@
         videoPlayer.currentTime = newTime;
       };
     
-      // Skip backward in the video
       const skipBackward = () => {
         if (!videoPlayer) return;
         
@@ -244,20 +552,16 @@
         videoPlayer.currentTime = newTime;
       };
     
-      // Start continuous forward skipping on hold
       const startForwardSkip = () => {
         if (skipForwardInterval) return; // Already skipping
         
-        // Skip immediately on press
         skipForward();
         
-        // Start interval for continuous skipping
         skipForwardInterval = setInterval(() => {
           skipForward();
         }, skipIntervalDelay);
       };
     
-      // Stop forward skipping on release
       const stopForwardSkip = () => {
         if (skipForwardInterval) {
           clearInterval(skipForwardInterval);
@@ -265,20 +569,16 @@
         }
       };
     
-      // Start continuous backward skipping on hold
       const startBackwardSkip = () => {
         if (skipBackwardInterval) return; // Already skipping
         
-        // Skip immediately on press
         skipBackward();
         
-        // Start interval for continuous skipping
         skipBackwardInterval = setInterval(() => {
           skipBackward();
         }, skipIntervalDelay);
       };
     
-      // Stop backward skipping on release
       const stopBackwardSkip = () => {
         if (skipBackwardInterval) {
           clearInterval(skipBackwardInterval);
@@ -286,21 +586,17 @@
         }
       };
     
-      // Handle keyboard shortcuts for skipping
       const handleKeydown = (event: KeyboardEvent) => {
-        // Skip forward with right arrow
         if (event.key === 'ArrowRight') {
           skipForward();
           event.preventDefault();
         }
-        // Skip backward with left arrow
         else if (event.key === 'ArrowLeft') {
           skipBackward();
           event.preventDefault();
         }
       };
       
-      // Progress bar functions
       const updateProgress = () => {
         if (!videoPlayer) return;
         currentTime = videoPlayer.currentTime;
@@ -324,12 +620,10 @@
           videoPlayer.pause();
         }
         
-        // Show controls when toggling play/pause
         showControls = true;
         resetControlsTimeout();
       };
       
-      // Format seconds into MM:SS format
       const formatTime = (timeInSeconds: number): string => {
         if (isNaN(timeInSeconds)) return '00:00';
         
@@ -339,7 +633,6 @@
         return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
       };
       
-      // Reset the controls timeout
       const resetControlsTimeout = () => {
         if (controlsTimeout) {
           clearTimeout(controlsTimeout);
@@ -350,13 +643,11 @@
         }, 3000);
       };
       
-      // Show controls when user interacts with the video
       const showVideoControls = () => {
         showControls = true;
         resetControlsTimeout();
       };
     
-      // Tag related functions
       const toggleTagsPanel = () => {
         showTagsPanel = !showTagsPanel;
       };
@@ -375,7 +666,6 @@
     
         asset = await getAssetInfo({ id: asset.id });
         
-        // Update selected preset tags
         if (asset?.tags) {
           selectedPresetTags = asset.tags
             .filter(tag => presetTags.some(preset => preset.value === tag.value))
@@ -390,7 +680,6 @@
         if (ids) {
           asset = await getAssetInfo({ id: asset.id });
           
-          // Update selected preset tags
           if (asset?.tags) {
             selectedPresetTags = asset.tags
               .filter(tag => presetTags.some(preset => preset.value === tag.value))
@@ -399,35 +688,25 @@
         }
       };
       
-      // Function to toggle preset tag with one click
       const togglePresetTag = async (presetTagValue: string) => {
         if (!asset?.id) return;
         
-        // Find if this tag already exists on the asset
         const existingTag = asset.tags.find(tag => tag.value === presetTagValue);
         
         if (existingTag) {
-          // Remove tag if it exists on the asset
           await handleRemoveTag(existingTag.id);
         } else {
-          // Add tag if it doesn't exist on the asset
           
-          // Check if tag exists in the system
           const tagId = availableTagsMap[presetTagValue.toLowerCase()];
           
           if (tagId) {
-            // Tag exists in system, apply it directly
             await handleTag([tagId]);
           } else {
-            // Tag doesn't exist in system, need to create it first
-            // For now, just open tag form as fallback
-            // In a real implementation, you might want to create the tag automatically
             isTagFormOpen = true;
           }
         }
       };
       
-      // Check if a preset tag is already applied to the asset
       const isPresetTagSelected = (tagValue: string): boolean => {
         return asset?.tags?.some(tag => tag.value === tagValue) || false;
       };
@@ -634,9 +913,6 @@
         <TagAssetForm onTag={(tagsIds) => handleTag(tagsIds)} onCancel={handleCancelTag} />
       </Portal>
     {/if} -->
-
-
-
     <script lang="ts">
       import LoadingSpinner from '$lib/components/shared-components/loading-spinner.svelte';
       import { loopVideo as loopVideoPreference, videoViewerMuted, videoViewerVolume } from '$lib/stores/preferences.store';
@@ -651,7 +927,6 @@
       import { isFaceEditMode } from '$lib/stores/face-edit.svelte';
       import FaceEditor from '$lib/components/asset-viewer/face-editor/face-editor.svelte';
       
-      // Import for tag components
       import Icon from '$lib/components/elements/icon.svelte';
       import TagAssetForm from '$lib/components/forms/tag-asset-form.svelte';
       import Portal from '$lib/components/shared-components/portal/portal.svelte';
@@ -675,7 +950,6 @@
         onVideoEnded?: () => void;
         onVideoStarted?: () => void;
         onClose?: () => void;
-      }
     
       let {
         assetId,
@@ -699,7 +973,6 @@
       let forceMuted = $state(false);
       let isScrubbing = $state(false);
       
-      // Fast playback variables
       let normalPlaybackRate = 1.0;
       let fastForwardRate = 3.5; // 3.5x speed for fast forward
       let fastRewindRate = -3.5; // Negative value indicates we need to handle rewind specially
@@ -707,7 +980,6 @@
       let isRewinding = $state(false);
       let rewindInterval: number | null = $state(null); // For manual rewinding
       
-      // Progress bar variables
       let currentTime = $state(0);
       let duration = $state(0);
       let progress = $state(0);
@@ -715,12 +987,10 @@
       let showControls = $state(true);
       let controlsTimeout: number | null = $state(null);
     
-      // Tags related states
       let tags = $derived(asset?.tags || []);
       let isTagFormOpen = $state(false);
       let showTagsPanel = $state(false);
       
-      // Preset tags with their IDs from the system
       const presetTags = [
         { id: 'preset-low', value: 'low' },
         { id: 'preset-semitop', value: 'semitop' },
@@ -742,10 +1012,8 @@
         { id: 'preset-tit', value: 'tit' }
       ];
       
-      // Map to store available tag IDs from the system
       let availableTagsMap = $state<Record<string, string>>({});
       
-      // Track which preset tags are selected for the current asset
       let selectedPresetTags = $state<string[]>([]);
     
       onMount(async () => {
@@ -755,7 +1023,6 @@
           videoPlayer.load();
         }
         
-        // Fetch asset info if not provided
         if (!asset?.id && assetId) {
           try {
             asset = await getAssetInfo({ id: assetId });
@@ -764,18 +1031,15 @@
           }
         }
         
-        // Initialize selected preset tags based on the asset's current tags
         if (asset?.tags) {
           selectedPresetTags = asset.tags
             .filter(tag => presetTags.some(preset => preset.value === tag.value))
             .map(tag => tag.value);
         }
         
-        // Get all available tags from the system to find IDs for our preset tags
         try {
           const allTags = await getAllTags();
           
-          // Create a mapping of tag values to their IDs
           availableTagsMap = allTags.reduce((map: Record<string, string>, tag) => {
             map[tag.value.toLowerCase()] = tag.id;
             return map;
@@ -784,7 +1048,6 @@
           handleError(error, $t('errors.unable_to_load_tags'));
         }
         
-        // Auto-hide controls after 3 seconds
         controlsTimeout = setTimeout(() => {
           showControls = false;
         }, 3000);
@@ -794,12 +1057,10 @@
         if (videoPlayer) {
           videoPlayer.src = '';
         }
-        // Clear any intervals when component is destroyed
         if (rewindInterval) {
           clearInterval(rewindInterval);
         }
         
-        // Clear any timeouts
         if (controlsTimeout) {
           clearTimeout(controlsTimeout);
         }
@@ -841,69 +1102,55 @@
         }
       };
     
-      // Start fast forwarding the video
       const startFastForward = () => {
         if (!videoPlayer || isForwarding) return;
         
         isForwarding = true;
         
-        // Pause rewinding if active
         if (isRewinding) {
           stopRewind();
         }
         
-        // Store current playback state if needed
         if (videoPlayer.paused) {
-          // If video was paused, play it for the fast-forward
           videoPlayer.play().catch(error => handleError(error, $t('errors.unable_to_play_video')));
         }
         
-        // Set fast forward speed
         videoPlayer.playbackRate = fastForwardRate;
       };
     
-      // Stop fast forwarding
       const stopFastForward = () => {
         if (!videoPlayer || !isForwarding) return;
         
-        // Reset to normal speed
         videoPlayer.playbackRate = normalPlaybackRate;
         isForwarding = false;
       };
     
-      // Special handling for rewind since HTML5 video doesn't support negative playback rates
       const startRewind = () => {
         if (!videoPlayer || isRewinding) return;
         
         isRewinding = true;
         
-        // Pause forwarding if active
         if (isForwarding) {
           stopFastForward();
         }
         
-        // Make sure video is playing
         if (videoPlayer.paused) {
           videoPlayer.play().catch(error => handleError(error, $t('errors.unable_to_play_video')));
         }
         
-        // We'll use an interval to manually adjust the currentTime
         const rewindStep = 0.1; // Small step for smoother rewind
         rewindInterval = setInterval(() => {
           if (!videoPlayer) return;
           
-          // Calculate how much to rewind based on desired rate
           const newTime = Math.max(videoPlayer.currentTime - rewindStep, 0);
           videoPlayer.currentTime = newTime;
           
-          // If we reached the beginning, stop rewinding
           if (newTime <= 0) {
             stopRewind();
           }
         }, 30); // Update frequently for smoother appearance
       };
     
-      // Stop rewinding
       const stopRewind = () => {
         if (!isRewinding) return;
         
@@ -915,17 +1162,14 @@
         isRewinding = false;
       };
     
-      // Handle keyboard shortcuts for skipping
       const handleKeydown = (event: KeyboardEvent) => {
         if (!videoPlayer) return;
         
-        // Skip forward with right arrow
         if (event.key === 'ArrowRight') {
           const skipTime = calculateSkipTime();
           videoPlayer.currentTime = Math.min(videoPlayer.currentTime + skipTime, videoPlayer.duration);
           event.preventDefault();
         }
-        // Skip backward with left arrow
         else if (event.key === 'ArrowLeft') {
           const skipTime = calculateSkipTime();
           videoPlayer.currentTime = Math.max(videoPlayer.currentTime - skipTime, 0);
@@ -933,14 +1177,11 @@
         }
       };
       
-      // Calculate skip time based on video duration (for keyboard shortcuts)
       const calculateSkipTime = () => {
         if (!videoPlayer) return 0;
         
-        // Calculate skip based on percentage of total duration
         let skipTime = videoPlayer.duration * skipPercentage;
         
-        // Apply min/max constraints
         if (skipTime > maxSkipSeconds) {
           skipTime = maxSkipSeconds;
         } else if (skipTime < minSkipSeconds) {
@@ -950,7 +1191,6 @@
         return skipTime;
       };
       
-      // Progress bar functions
       const updateProgress = () => {
         if (!videoPlayer) return;
         currentTime = videoPlayer.currentTime;
@@ -974,12 +1214,10 @@
           videoPlayer.pause();
         }
         
-        // Show controls when toggling play/pause
         showControls = true;
         resetControlsTimeout();
       };
       
-      // Format seconds into MM:SS format
       const formatTime = (timeInSeconds: number): string => {
         if (isNaN(timeInSeconds)) return '00:00';
         
@@ -989,7 +1227,6 @@
         return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
       };
       
-      // Reset the controls timeout
       const resetControlsTimeout = () => {
         if (controlsTimeout) {
           clearTimeout(controlsTimeout);
@@ -1000,13 +1237,11 @@
         }, 3000);
       };
       
-      // Show controls when user interacts with the video
       const showVideoControls = () => {
         showControls = true;
         resetControlsTimeout();
       };
     
-      // Tag related functions
       const toggleTagsPanel = () => {
         showTagsPanel = !showTagsPanel;
       };
@@ -1025,7 +1260,6 @@
     
         asset = await getAssetInfo({ id: asset.id });
         
-        // Update selected preset tags
         if (asset?.tags) {
           selectedPresetTags = asset.tags
             .filter(tag => presetTags.some(preset => preset.value === tag.value))
@@ -1040,7 +1274,6 @@
         if (ids) {
           asset = await getAssetInfo({ id: asset.id });
           
-          // Update selected preset tags
           if (asset?.tags) {
             selectedPresetTags = asset.tags
               .filter(tag => presetTags.some(preset => preset.value === tag.value))
@@ -1049,34 +1282,25 @@
         }
       };
       
-      // Function to toggle preset tag with one click
       const togglePresetTag = async (presetTagValue: string) => {
         if (!asset?.id) return;
         
-        // Find if this tag already exists on the asset
         const existingTag = asset.tags.find(tag => tag.value === presetTagValue);
         
         if (existingTag) {
-          // Remove tag if it exists on the asset
           await handleRemoveTag(existingTag.id);
         } else {
-          // Add tag if it doesn't exist on the asset
           
-          // Check if tag exists in the system
           const tagId = availableTagsMap[presetTagValue.toLowerCase()];
           
           if (tagId) {
-            // Tag exists in system, apply it directly
             await handleTag([tagId]);
           } else {
-            // Tag doesn't exist in system, need to create it first
-            // For now, just open tag form as fallback
             isTagFormOpen = true;
           }
         }
       };
       
-      // Check if a preset tag is already applied to the asset
       const isPresetTagSelected = (tagValue: string): boolean => {
         return asset?.tags?.some(tag => tag.value === tagValue) || false;
       };
@@ -1276,10 +1500,162 @@
           </div>
         {/if}
       </div>
-    </div>
     
     {#if isTagFormOpen}
       <Portal>
         <TagAssetForm onTag={(tagsIds) => handleTag(tagsIds)} onCancel={handleCancelTag} />
       </Portal>
     {/if}
+++ b/web/src/lib/stores/assets-store.svelte.ts
+
+
+
+
+
+
+
+
+
+
+  tagIds?: string[];  // Add this
+  isFavorite?: boolean; // Add this
+
+
+
+
+
+
+
+
+
+  
+
+    const params = new URLSearchParams();
+
+    if (this.#options.albumId) {
+      params.append('albumId', this.#options.albumId);
+    }
+    if (this.#options.personId) {
+      params.append('personId', this.#options.personId);
+    }
+    if (this.#options.isArchived !== undefined) {
+      params.append('isArchived', String(this.#options.isArchived));
+    }
+    if (this.#options.isFavorite !== undefined) {
+      params.append('isFavorite', String(this.#options.isFavorite));
+    }
+    if (this.#options.isTrashed !== undefined) {
+      params.append('isTrashed', String(this.#options.isTrashed));
+    }
+  
+    if (this.#options.tagIds && this.#options.tagIds.length > 0) {
+      this.#options.tagIds.forEach(tagId => {
+        params.append('tagIds', tagId);
+      });
+    }
+    
+    console.log("Updating options with:", JSON.stringify(options));
+
+    console.log("Initializing asset store with options:", JSON.stringify(options));
+
+
+  
+++ b/web/src/routes/(user)/albums/[albumId=id]/[[photos=photos]]/[[assetId=id]]/+page.svelte
+
+
+
+
+
+
+  import Combobox from '$lib/components/shared-components/combobox.svelte';
+  import { SvelteSet } from 'svelte/reactivity';
+  import FilterBar from '$lib/components/shared-components/filter-bar.svelte'; // You may need
+
+    let selectedTags = $state(new SvelteSet<string>());
+    let isStarred = $state(false);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+$effect(() => {
+  if (viewMode === AlbumPageViewMode.VIEW) {
+    const tagIdsArray = selectedTags.size > 0 ? Array.from(selectedTags) : undefined;
+    console.log("Selected tags updated in album page:", tagIdsArray);
+
+    console.log("Updating asset store with filters:", {
+      albumId,
+      tagIds: tagIdsArray,
+      isFavorite: isStarred
+    });
+    
+      void assetStore.updateOptions({ 
+      albumId, 
+      order: albumOrder,
+      tagIds: tagIdsArray,
+      isFavorite: isStarred
+    });
+  } else if (viewMode === AlbumPageViewMode.SELECT_ASSETS) {
+    void assetStore.updateOptions({ isArchived: false, withPartners: true, timelineAlbumId: albumId });
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+          <!-- 888999888 -->
+          {#if album.assetCount > 0 && viewMode === AlbumPageViewMode.VIEW}
+            <section class="mt-4">
+              <FilterBar bind:selectedTags bind:isStarred />
+            </section>
+          {/if}
+
+
+
+
+
+

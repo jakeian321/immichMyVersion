@@ -1,0 +1,350 @@
+export function getTimeBucket({ 
+    albumId, isArchived, isFavorite, isTrashed, key, order, personId, size, 
+    tagId, tagIds, timeBucket, userId, withPartners, withStacked 
+}: {
+    tagIds?: string[];  // Add this
+        tagIds,  // Add this
+export function getTimeBuckets({ 
+    albumId, isArchived, isFavorite, isTrashed, key, order, personId, size, 
+    tagId, tagIds, userId, withPartners, withStacked 
+}: {
+    tagIds?: string[];  // Add this
+        tagIds,  // Add this
+
+
+++ b/server/src/controllers/album.controller.ts
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { AssetResponseDto } from 'src/dtos/asset-response.dto';
+import { AssetOrder } from 'src/enum/asset-order.enum';
+import { Type } from 'class-transformer';
+import { IsArray, IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
+
+export class GetAlbumAssetsDto {
+  @IsOptional()
+  @IsEnum(AssetOrder)
+  order?: AssetOrder;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @Type(() => String)
+  tagIds?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isFavorite?: boolean;
+
+}
+  @Get(':id/assets')
+  @Authenticated({ permission: Permission.ALBUM_READ, sharedLink: true })
+  getAlbumAssets(
+    @Auth() auth: AuthDto,
+    @Param() { id }: UUIDParamDto,
+    @Query() filters: GetAlbumAssetsDto,
+  ): Promise<AssetResponseDto[]> {
+    console.log("Album assets request with filters:", JSON.stringify(filters));
+    return this.service.getAlbumAssets(auth, id, filters);
+  }
+
+}
+++ b/server/src/dtos/time-bucket.dto.ts
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  @ValidateUUID({ each: true, optional: true })
+  @ApiProperty({ type: 'string', isArray: true })
+  tagIds?: string[];
+
+}
+++ b/server/src/repositories/asset.repository.ts
+  tagIds?: string[];
+  tagIds?: string[]; // Add it here if not in AssetBuilderOptions
+
+
+
+
+
+
+
+
+
+
+
+
+
+  async getByAlbumId(
+    albumId: string, 
+    options: {
+      order?: AssetOrder;
+      tagIds?: string[];
+      isFavorite?: boolean;
+    } = {},
+    pagination: PaginationOptions = { take: 100 }
+  ): Paginated<AssetEntity> {
+    console.log("Album ID:", albumId);
+    console.log("Filter options:", JSON.stringify(options));
+    
+    let query = withAlbums(this.db.selectFrom('assets'), { albumId })
+      .selectAll('assets')
+      .where('deletedAt', 'is', null);
+
+    if (options.tagIds && options.tagIds.length > 0) {
+      console.log("Filtering by tag IDs:", options.tagIds);
+      query = query.where(eb => {
+        return eb.exists(
+          eb.selectFrom('asset_tags')
+            .select(1)
+            .whereRef('asset_tags.assetId', '=', 'assets.id')
+            .where('asset_tags.tagId', 'in', options.tagIds)
+        );
+      });
+    }
+    
+    if (options.isFavorite !== undefined) {
+      query = query.where('assets.isFavorite', '=', options.isFavorite);
+      console.log("SQL favorite filtering applied:", options.isFavorite);
+    }
+    
+    if (options.order === AssetOrder.NEWEST) {
+      query = query.orderBy('assets.fileCreatedAt', 'desc');
+    } else if (options.order === AssetOrder.OLDEST) {
+      query = query.orderBy('assets.fileCreatedAt', 'asc');
+    } else {
+      query = query.orderBy('assets.fileCreatedAt', 'desc');
+    }
+  
+    console.log("Generated SQL query:", query.toSQL ? query.toSQL() : "SQL query not available");
+    
+    const items = await query.execute();
+    console.log(`Found ${items.length} assets after filtering`);
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+++ b/server/src/services/album.service.ts
+
+
+
+
+import { AssetResponseDto } from 'src/dtos/asset-response.dto';
+import { GetAlbumAssetsDto } from 'src/controllers/album.controller';
+
+
+
+
+
+
+
+
+  async getAlbumAssets(auth: AuthDto, id: string, filters: GetAlbumAssetsDto): Promise<AssetResponseDto[]> {
+    await this.requireAccess({ auth, permission: Permission.ALBUM_READ, ids: [id] });
+    
+    const album = await this.findOrFail(id, { withAssets: false });
+    
+    const paginationResult = await this.assetRepository.getByAlbumId(
+      id, 
+      {
+        order: filters.order,
+        tagIds: filters.tagIds,
+        isFavorite: filters.isFavorite,
+      },
+      { take: 100 } // You might want to make this configurable
+    );
+    
+    return paginationResult.items.map(asset => mapAsset(asset, { auth }));
+  }
+  
+
+++ b/server/src/services/timeline.service.ts
+  
+  
+
+
+
+  if (dto.albumId) {
+    await this.requireAccess({ auth, permission: Permission.ALBUM_READ, ids: [dto.albumId] });
+  } else {
+    dto.userId = dto.userId || auth.user.id;
+  }
+  if (dto.userId) {
+    await this.requireAccess({ auth, permission: Permission.TIMELINE_READ, ids: [dto.userId] });
+    if (dto.isArchived !== false) {
+      await this.requireAccess({ auth, permission: Permission.ARCHIVE_READ, ids: [dto.userId] });
+  }
+  if (dto.tagId) {
+    await this.requireAccess({ auth, permission: Permission.TAG_READ, ids: [dto.tagId] });
+  }
+  
+  if (dto.tagIds && dto.tagIds.length > 0) {
+    await this.requireAccess({ auth, permission: Permission.TAG_READ, ids: dto.tagIds });
+  }
+  if (dto.withPartners) {
+    const requestedArchived = dto.isArchived === true || dto.isArchived === undefined;
+    const requestedFavorite = dto.isFavorite === true || dto.isFavorite === false;
+    const requestedTrash = dto.isTrashed === true;
+    if (requestedArchived || requestedFavorite || requestedTrash) {
+      throw new BadRequestException(
+        'withPartners is only supported for non-archived, non-trashed, non-favorited assets',
+      );
+++ b/web/src/lib/stores/assets-store.svelte.ts
+
+
+
+
+
+
+
+
+
+
+  tagIds?: string[];  // Add this
+  isFavorite?: boolean; // Add this
+
+
+
+
+
+
+
+
+
+    console.log("Initializing asset store with options:", JSON.stringify(options));
+
+++ b/web/src/routes/(user)/albums/[albumId=id]/[[photos=photos]]/[[assetId=id]]/+page.svelte
+
+
+
+
+
+
+  import Combobox from '$lib/components/shared-components/combobox.svelte';
+  import { SvelteSet } from 'svelte/reactivity';
+  import FilterBar from '$lib/components/shared-components/filter-bar.svelte'; // You may need
+
+    let selectedTags = $state(new SvelteSet<string>());
+    let isStarred = $state(false);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+$effect(() => {
+  if (viewMode === AlbumPageViewMode.VIEW) {
+    const tagIdsArray = selectedTags.size > 0 ? Array.from(selectedTags) : undefined;
+    
+    console.log("Updating asset store with filters:", {
+      albumId,
+      tagIds: tagIdsArray,
+      isFavorite: isStarred
+    });
+    
+    void assetStore.updateOptions({ 
+      albumId, 
+      order: albumOrder,
+      tagIds: tagIdsArray,
+      isFavorite: isStarred, // Pass the boolean directly
+    });
+  } else if (viewMode === AlbumPageViewMode.SELECT_ASSETS) {
+    void assetStore.updateOptions({ isArchived: false, withPartners: true, timelineAlbumId: albumId });
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+          <!-- 888999888 -->
+          {#if album.assetCount > 0 && viewMode === AlbumPageViewMode.VIEW}
+            <section class="mt-4">
+              <FilterBar bind:selectedTags bind:isStarred />
+            </section>
+          {/if}
+
+
+
+
+
+

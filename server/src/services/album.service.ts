@@ -20,6 +20,19 @@ import { AlbumAssetCount, AlbumInfoOptions } from 'src/repositories/album.reposi
 import { BaseService } from 'src/services/base.service';
 import { addAssets, removeAssets } from 'src/utils/asset.util';
 
+
+
+
+
+//888999888
+import { AssetResponseDto } from 'src/dtos/asset-response.dto';
+import { GetAlbumAssetsDto } from 'src/controllers/album.controller';
+
+
+
+
+
+
 @Injectable()
 export class AlbumService extends BaseService {
   async getStatistics(auth: AuthDto): Promise<AlbumStatisticsResponseDto> {
@@ -35,6 +48,31 @@ export class AlbumService extends BaseService {
       notShared: notShared.length,
     };
   }
+
+
+
+  async getAlbumAssets(auth: AuthDto, id: string, filters: GetAlbumAssetsDto): Promise<AssetResponseDto[]> {
+    // Verify access permissions first
+    await this.requireAccess({ auth, permission: Permission.ALBUM_READ, ids: [id] });
+    
+    // Find the album to verify it exists
+    const album = await this.findOrFail(id, { withAssets: false });
+    
+    // Get all assets associated with this album with the applied filters
+    const paginationResult = await this.assetRepository.getByAlbumId(
+      id, 
+      {
+        order: filters.order,
+        tagIds: filters.tagIds,
+        isFavorite: filters.isFavorite,
+      },
+      { take: 100 } // You might want to make this configurable
+    );
+    
+    // Map the entities to DTOs
+    return paginationResult.items.map(asset => mapAsset(asset, { auth }));
+  }
+  
 
   async getAll({ user: { id: ownerId } }: AuthDto, { assetId, shared }: GetAlbumsDto): Promise<AlbumResponseDto[]> {
     await this.albumRepository.updateThumbnails();

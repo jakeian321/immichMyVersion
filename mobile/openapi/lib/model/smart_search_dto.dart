@@ -13,6 +13,7 @@ part of openapi.api;
 class SmartSearchDto {
   /// Returns a new [SmartSearchDto] instance.
   SmartSearchDto({
+    this.albumIds = const [],
     this.city,
     this.country,
     this.createdAfter,
@@ -48,6 +49,9 @@ class SmartSearchDto {
     this.withDeleted,
     this.withExif,
   });
+
+  List<String> albumIds;
+
 
   String? city;
 
@@ -268,6 +272,8 @@ class SmartSearchDto {
 
   @override
   bool operator ==(Object other) => identical(this, other) || other is SmartSearchDto &&
+      _deepEquality.equals(other.albumIds, albumIds) &&
+
     other.city == city &&
     other.country == country &&
     other.createdAfter == createdAfter &&
@@ -306,6 +312,8 @@ class SmartSearchDto {
   @override
   int get hashCode =>
     // ignore: unnecessary_parenthesis
+    (albumIds.hashCode) +
+
     (city == null ? 0 : city!.hashCode) +
     (country == null ? 0 : country!.hashCode) +
     (createdAfter == null ? 0 : createdAfter!.hashCode) +
@@ -342,10 +350,12 @@ class SmartSearchDto {
     (withExif == null ? 0 : withExif!.hashCode);
 
   @override
-  String toString() => 'SmartSearchDto[city=$city, country=$country, createdAfter=$createdAfter, createdBefore=$createdBefore, deviceId=$deviceId, isArchived=$isArchived, isEncoded=$isEncoded, isFavorite=$isFavorite, isMotion=$isMotion, isNotInAlbum=$isNotInAlbum, isOffline=$isOffline, isVisible=$isVisible, language=$language, lensModel=$lensModel, libraryId=$libraryId, make=$make, model=$model, page=$page, personIds=$personIds, query=$query, rating=$rating, size=$size, state=$state, tagIds=$tagIds, takenAfter=$takenAfter, takenBefore=$takenBefore, trashedAfter=$trashedAfter, trashedBefore=$trashedBefore, type=$type, updatedAfter=$updatedAfter, updatedBefore=$updatedBefore, withArchived=$withArchived, withDeleted=$withDeleted, withExif=$withExif]';
+  String toString() => 'SmartSearchDto[albumIds=$albumIds, city=$city, country=$country, createdAfter=$createdAfter, createdBefore=$createdBefore, deviceId=$deviceId, isArchived=$isArchived, isEncoded=$isEncoded, isFavorite=$isFavorite, isMotion=$isMotion, isNotInAlbum=$isNotInAlbum, isOffline=$isOffline, isVisible=$isVisible, lensModel=$lensModel, libraryId=$libraryId, make=$make, model=$model, page=$page, personIds=$personIds, query=$query, rating=$rating, size=$size, state=$state, tagIds=$tagIds, takenAfter=$takenAfter, takenBefore=$takenBefore, trashedAfter=$trashedAfter, trashedBefore=$trashedBefore, type=$type, updatedAfter=$updatedAfter, updatedBefore=$updatedBefore, withArchived=$withArchived, withDeleted=$withDeleted, withExif=$withExif]';
 
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
+    json[r'albumIds'] = this.albumIds;
+
     if (this.city != null) {
       json[r'city'] = this.city;
     } else {
@@ -512,6 +522,9 @@ class SmartSearchDto {
       final json = value.cast<String, dynamic>();
 
       return SmartSearchDto(
+      albumIds: json[r'albumIds'] is Iterable
+          ? (json[r'albumIds'] as Iterable).cast<String>().toList(growable: false)
+          : const [],
         city: mapValueOfType<String>(json, r'city'),
         country: mapValueOfType<String>(json, r'country'),
         createdAfter: mapDateTime(json, r'createdAfter', r''),

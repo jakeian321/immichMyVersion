@@ -158,10 +158,28 @@ class Album {
     );
     a.remoteAssetCount = dto.assetCount;
     a.owner.value = await db.users.getById(dto.ownerId);
-    if (dto.order != null) {
-      a.sortOrder =
-          dto.order == AssetOrder.asc ? SortOrder.asc : SortOrder.desc;
-    }
+    //888999888
+    // if (dto.order != null) {
+    //   a.sortOrder =
+    //       dto.order == AssetOrder.asc ? SortOrder.asc : SortOrder.desc;
+    // }
+      if (dto.order != null) {
+          switch (dto.order) {
+            case AssetOrder.asc:
+              a.sortOrder = SortOrder.asc;
+              break;
+            case AssetOrder.sizeAsc:
+              a.sortOrder = SortOrder.sizeAsc;
+              break;
+            case AssetOrder.sizeDesc:
+              a.sortOrder = SortOrder.sizeDesc;
+              break;
+            case AssetOrder.desc:
+            default:
+              a.sortOrder = SortOrder.desc;
+              break;
+          }
+        }
 
     if (dto.albumThumbnailAssetId != null) {
       a.thumbnail.value = await db.assets

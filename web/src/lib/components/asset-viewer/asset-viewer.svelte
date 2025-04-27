@@ -456,7 +456,8 @@
   {/if}
 
   {#if $slideshowState === SlideshowState.None && showNavigation && !isShowEditor}
-    <div class="z-[1001] my-auto column-span-1 col-start-1 row-span-full row-start-1 justify-self-start">
+    <!-- commented out this 888999888 and added line 461 <div class="z-[1001] my-auto column-span-1 col-start-1 row-span-full row-start-1 justify-self-start"> -->
+    <div class="z-[1001] fixed left-[0%] bottom-[10%]">
       <PreviousAssetAction onPreviousAsset={() => navigateAsset('previous')} />
     </div>
   {/if}
@@ -562,7 +563,8 @@
   </div>
 
   {#if $slideshowState === SlideshowState.None && showNavigation && !isShowEditor}
-    <div class="z-[1001] my-auto col-span-1 col-start-4 row-span-full row-start-1 justify-self-end">
+    <!-- <div class="z-[1001] my-auto col-span-1 col-start-4 row-span-full row-start-1 justify-self-end"> -->
+    <div class="z-[1001] fixed left-[20%] bottom-[88%]">
       <NextAssetAction onNextAsset={() => navigateAsset('next')} />
     </div>
   {/if}

@@ -70,7 +70,7 @@ export interface AssetBuilderOptions {
   isTrashed?: boolean;
   isDuplicate?: boolean;
   albumId?: string;
-  tagId?: string;
+  tagIds?: string[];
   personId?: string;
   userIds?: string[];
   withStacked?: boolean;
@@ -82,6 +82,7 @@ export interface AssetBuilderOptions {
 export interface TimeBucketOptions extends AssetBuilderOptions {
   size: TimeBucketSize;
   order?: AssetOrder;
+  tagIds?: string[]; // Add it here if not in AssetBuilderOptions
 }
 
 export interface TimeBucketItem {
@@ -388,6 +389,19 @@ export class AssetRepository {
     await this.db.deleteFrom('assets').where('ownerId', '=', ownerId).execute();
   }
 
+
+
+
+
+
+
+
+
+
+
+
+
+  //888999888
   async getByAlbumId(pagination: PaginationOptions, albumId: string): Paginated<AssetEntity> {
     const items = await withAlbums(this.db.selectFrom('assets'), { albumId })
       .selectAll('assets')
@@ -397,6 +411,15 @@ export class AssetRepository {
 
     return paginationHelper(items as any as AssetEntity[], pagination.take);
   }
+
+
+
+
+
+
+
+
+
 
   async getByDeviceIds(ownerId: string, deviceId: string, deviceAssetIds: string[]): Promise<string[]> {
     const assets = await this.db
@@ -898,6 +921,24 @@ export class AssetRepository {
       .orderBy('assets.localDateTime', options.order ?? 'desc')
       .execute() as any as Promise<AssetEntity[]>;
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   @GenerateSql({ params: [DummyValue.UUID] })
   getDuplicates(userId: string): Promise<DuplicateGroup[]> {

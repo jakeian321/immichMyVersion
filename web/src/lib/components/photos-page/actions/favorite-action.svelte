@@ -20,7 +20,7 @@
 
   let { onFavorite, menuItem = false, removeFavorite }: Props = $props();
 
-  let text = $derived(removeFavorite ? $t('remove_from_favorites') : $t('to_favorite'));
+  let text = $derived(removeFavorite ? $t('reeeee_favorites') : $t('to_favorite'));
   let icon = $derived(removeFavorite ? mdiHeartMinusOutline : mdiHeartOutline);
 
   let loading = $state(false);
@@ -48,8 +48,8 @@
 
       notificationController.show({
         message: isFavorite
-          ? $t('added_to_favorites_count', { values: { count: ids.length } })
-          : $t('removed_from_favorites_count', { values: { count: ids.length } }),
+          ? $t('addfavorite_count', { values: { count: ids.length } })
+          : $t('removedfavorites_count', { values: { count: ids.length } }),
         type: NotificationType.Info,
       });
 

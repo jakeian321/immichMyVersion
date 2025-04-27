@@ -32,10 +32,10 @@
 
       onAction({ type: asset.isFavorite ? AssetAction.FAVORITE : AssetAction.UNFAVORITE, asset });
 
-      notificationController.show({
-        type: NotificationType.Info,
-        message: asset.isFavorite ? $t('added_to_favorites') : $t('removed_from_favorites'),
-      });
+      // notificationController.show({
+      //   type: NotificationType.Info,
+      //   // message: asset.isFavorite ? $t('added_to_fav8888') : $t('removed_from_fav8888'),
+      // });
     } catch (error) {
       handleError(error, $t('errors.unable_to_add_remove_favorites', { values: { favorite: asset.isFavorite } }));
     }
