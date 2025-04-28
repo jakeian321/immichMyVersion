@@ -93,8 +93,12 @@
   let isTagFormOpen = $state(false);
   let showTagsPanel = $state(false);
 
-  // Toggle visibility for all tag elements
-  let showTagElements = $state(true);
+  // Toggle visibility for all tag elements - NOW FALSE BY DEFAULT
+  let showTagElements = $state(false);
+  
+  // NEW: Track if we've passed the threshold to show tags
+  let hasReachedTagDisplayThreshold = $state(false);
+  const TAG_DISPLAY_THRESHOLD = 0.9; // Show tags at 90% of video completion
 
   // Preset tags with their IDs from the system
   const presetTags = [
@@ -185,8 +189,9 @@
       showControls = false;
     }, 3000);
 
-    // Reset showTagElements when changing assets
-    showTagElements = true;
+    // Reset tag display states when changing assets
+    showTagElements = false;
+    hasReachedTagDisplayThreshold = false;
   });
 
   onDestroy(() => {
@@ -339,13 +344,22 @@
     return skipTime;
   };
 
-  // Progress bar functions
+  // Progress bar functions - MODIFIED to check for tag display threshold
   const updateProgress = () => {
     if (!videoPlayer) return;
     currentTime = videoPlayer.currentTime;
     duration = videoPlayer.duration || 0;
     progress = duration ? (currentTime / duration) * 100 : 0;
     isPlaying = !videoPlayer.paused;
+    
+    // Check if we've reached the threshold to display tags
+    if (!hasReachedTagDisplayThreshold && duration > 0) {
+      const progressPercentage = currentTime / duration;
+      if (progressPercentage >= TAG_DISPLAY_THRESHOLD) {
+        hasReachedTagDisplayThreshold = true;
+        showTagElements = true;
+      }
+    }
   };
 
   // FIXED: Improved progress bar click handling
@@ -808,203 +822,203 @@
       <FaceEditor htmlElement={videoPlayer} {containerWidth} {containerHeight} {assetId} />
     {/if}
 
-    <!-- Fast Forward Button - hide when zoomed -->
-    {#if !isZoomed}
-      <div class="z-[1001] fixed left-0 bottom-[88%]">
-        <button
-          class="bg-transparent text-white rounded-full p-2"
-          onmousedown={startFastForward}
-          onmouseup={stopFastForward}
-          onmouseleave={stopFastForward}
-          ontouchstart={startFastForward}
-          ontouchend={stopFastForward}
-        >
-          {isForwarding ? '3.5x' : 'S'} ⏩
-        </button>
-      </div>
-    {/if}
-
-
-    <!-- Auto Skip Button - hide when zoomed -->
-    {#if !isZoomed}
-      <div class="z-[1001] fixed left-14 bottom-[88%]">
-        <button
-          class={`bg-black bg-opacity-60 text-white rounded-full p-3 transition-all ${isAutoSkip ? 'bg-immich-primary' : 'bg-black bg-opacity-60'}`}
-          onclick={toggleAutoSkip}
-        >
-          <span class="font-bold">A</span>
-          {isAutoSkip ? '4x' : ''}
-        </button>
-      </div>
-    {/if}
-
-    <!-- Reset Zoom Button - only show when zoomed in -->
-    {#if isZoomed && showZoomControls}
-      <div class="z-[1001] fixed right-4 bottom-4" transition:fade={{ duration: 150 }}>
-        <button
-          type="button"
-          class="bg-black bg-opacity-60 text-white rounded-full p-3 hover:bg-opacity-80 transition-all"
-          title="Reset Zoom"
-          onclick={resetZoom}
-        >
-          <Icon path={mdiMagnifyMinusOutline} size="1.5rem" />
-        </button>
-      </div>
-
-      <!-- Zoom level indicator -->
-      <div
-        class="z-[1001] fixed left-4 bottom-4 bg-black bg-opacity-60 text-white px-3 py-1 rounded-full"
-        transition:fade={{ duration: 150 }}
-      >
-        {Math.round(scale * 100)}%
-      </div>
-    {/if}
-
-    <!-- Hide/Show Tags Button - only show when not zoomed -->
-    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
-      <div class="z-[1001] fixed left-0 bottom-[7%]">
-        <button
-          type="button"
-          class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
-          title={showTagElements ? 'Hide Tags' : 'Show Tags'}
-          onclick={toggleTagElementsVisibility}
-        >
-          <Icon path={showTagElements ? mdiEyeOff : mdiEye} size="1.2rem" />
-        </button>
-      </div>
-    {/if}
-
-    <!-- Tag Actions Panel - left side -->
-    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
-      <div class="z-[1001] fixed left-0 bottom-[80%]">
-        <div class="flex flex-col">
-          <!-- Always visible add tag button -->
-          <button
-            type="button"
-            class="bg-immich-primary text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1 hover:bg-immich-primary/80 transition-all"
-            title="Add tag"
-            onclick={handleAddTag}
-          >
-          <Icon path={mdiPlus} size="0.75rem" />
-          <span class="text-xs">Add Tag</span>
-        </button>
-
-        <!-- Toggle for existing tags -->
-        {#if tags.length > 0}
-          <button 
-            type="button"
-            class="bg-black bg-opacity-40 text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1"
-            title="Toggle Tags"
-            onclick={toggleTagsPanel}
-          >
-            <span class="text-xs">View Tags {showTagsPanel ? '▲' : '▼'}</span>
-          </button>
-        {/if}
-        
-        {#if showTagsPanel && tags.length > 0}
-          <!-- Reduced max-width from 300px to 200px -->
-          <div class="bg-black bg-opacity-40 rounded p-2 max-w-[200px]">
-            <div class="flex flex-wrap gap-1">
-              {#each tags as tag (tag.id)}
-              <div class="flex group transition-all">
-                <a
-                  class="inline-block h-min whitespace-nowrap pl-2 pr-1 py-0.5 text-center align-baseline leading-none text-gray-100 bg-immich-primary rounded-tl-full rounded-bl-full hover:bg-immich-primary/80 transition-all"
-                  href={encodeURI(`${AppRoute.TAGS}/?path=${tag.value}`)}
-                >
-                  <p class="text-xs">
-                    {tag.value}
-                  </p>
-                </a>
-              
-                <button
-                  type="button"
-                  class="text-gray-100 bg-immich-primary/95 rounded-tr-full rounded-br-full place-items-center place-content-center pr-1 pl-0.5 py-0.5 hover:bg-immich-primary/80 transition-all"
-                  title="Remove tag"
-                  onclick={() => handleRemoveTag(tag.id)}
-                >
-                  <Icon path={mdiClose} size="0.75rem" />
-                </button>
-              </div>
-              {/each}
-            </div>
-          </div>
-        {/if}
-      </div>
-    </div>
-  {/if}
-
-  <!-- Preset Tags Quick Access Panel - only show when showTagElements is true -->
-  {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && showTagElements}
-    <div class="z-[1001] fixed left-2 bottom-[20%]">
-      <div class="flex flex-col gap-1">
-        {#each presetTags as presetTag (presetTag.id)}
-          <button
-            type="button"
-            class={`px-2 py-1 rounded-lg text-white transition-all flex items-center gap-1 ${
-              isPresetTagSelected(presetTag.value) ? 'bg-immich-primary' : 'bg-black bg-opacity-40 hover:bg-immich-primary/50'
-            }`}
-            onclick={() => togglePresetTag(presetTag.value)}
-          >
-            <Icon path={mdiTag} size="0.6rem" />
-            <span class="text-xs font-medium">{presetTag.value}</span>
-          </button>
-        {/each}
-      </div>
-    </div>
-  {/if}
-
-  <!-- Custom progress bar - shows only when showControls is true and not zoomed -->
-  {#if showControls && !isZoomed}
-    <div 
-      class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-40 px-2 py-1 transition-opacity mx-auto max-w-[80%]"
-      transition:fade={{ duration: 150 }}
+  <!-- Fast Forward Button - hide when zoomed -->
+  {#if !isZoomed}
+  <div class="z-[1001] fixed left-0 bottom-[83%]">
+    <button
+      class="bg-transparent text-white rounded-full p-2"
+      onmousedown={startFastForward}
+      onmouseup={stopFastForward}
+      onmouseleave={stopFastForward}
+      ontouchstart={startFastForward}
+      ontouchend={stopFastForward}
     >
-      <div 
-        class="relative h-2 bg-gray-600 rounded cursor-pointer"
-        onmousedown={handleProgressBarClick}
-        ontouchstart={handleProgressBarClick}
+      {isForwarding ? '3.5x' : 'S'} ⏩
+    </button>
+  </div>
+{/if}
+
+
+<!-- Auto Skip Button - hide when zoomed -->
+{#if !isZoomed}
+  <div class="z-[1001] fixed left-14 bottom-[88%]">
+    <button
+      class={`bg-black bg-opacity-60 text-white rounded-full p-3 transition-all ${isAutoSkip ? 'bg-immich-primary' : 'bg-black bg-opacity-60'}`}
+      onclick={toggleAutoSkip}
+    >
+      <span class="font-bold">A</span>
+      {isAutoSkip ? '4x' : ''}
+    </button>
+  </div>
+{/if}
+
+<!-- Reset Zoom Button - only show when zoomed in -->
+{#if isZoomed && showZoomControls}
+  <div class="z-[1001] fixed right-4 bottom-4" transition:fade={{ duration: 150 }}>
+    <button
+      type="button"
+      class="bg-black bg-opacity-60 text-white rounded-full p-3 hover:bg-opacity-80 transition-all"
+      title="Reset Zoom"
+      onclick={resetZoom}
+    >
+      <Icon path={mdiMagnifyMinusOutline} size="1.5rem" />
+    </button>
+  </div>
+
+  <!-- Zoom level indicator -->
+  <div
+    class="z-[1001] fixed left-4 bottom-4 bg-black bg-opacity-60 text-white px-3 py-1 rounded-full"
+    transition:fade={{ duration: 150 }}
+  >
+    {Math.round(scale * 100)}%
+  </div>
+{/if}
+
+<!-- Hide/Show Tags Button - only show when not zoomed -->
+{#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+  <div class="z-[1001] fixed left-0 bottom-[88%]">
+    <button
+      type="button"
+      class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
+      title={showTagElements ? 'Hide Tags' : 'Show Tags'}
+      onclick={toggleTagElementsVisibility}
+    >
+      <Icon path={showTagElements ? mdiEyeOff : mdiEye} size="1.2rem" />
+    </button>
+  </div>
+{/if}
+
+<!-- Tag Actions Panel - left side -->
+{#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+  <div class="z-[1001] fixed left-0 bottom-[78%]">
+    <div class="flex flex-col">
+      <!-- Always visible add tag button -->
+      <button
+        type="button"
+        class="bg-immich-primary text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1 hover:bg-immich-primary/80 transition-all"
+        title="Add tag"
+        onclick={handleAddTag}
       >
-        <div 
-          class="absolute top-0 left-0 h-full bg-immich-primary rounded"
-          style={`width: ${progress}%`}
-        ></div>
+      <Icon path={mdiPlus} size="0.75rem" />
+      <span class="text-xs">Add Tag</span>
+    </button>
+
+    <!-- Toggle for existing tags -->
+    {#if tags.length > 0}
+      <button 
+        type="button"
+        class="bg-black bg-opacity-40 text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1"
+        title="Toggle Tags"
+        onclick={toggleTagsPanel}
+      >
+        <span class="text-xs">View Tags {showTagsPanel ? '▲' : '▼'}</span>
+      </button>
+    {/if}
+    
+    {#if showTagsPanel && tags.length > 0}
+      <!-- Reduced max-width from 300px to 200px -->
+      <div class="bg-black bg-opacity-40 rounded p-2 max-w-[200px]">
+        <div class="flex flex-wrap gap-1">
+          {#each tags as tag (tag.id)}
+          <div class="flex group transition-all">
+            <a
+              class="inline-block h-min whitespace-nowrap pl-2 pr-1 py-0.5 text-center align-baseline leading-none text-gray-100 bg-immich-primary rounded-tl-full rounded-bl-full hover:bg-immich-primary/80 transition-all"
+              href={encodeURI(`${AppRoute.TAGS}/?path=${tag.value}`)}
+            >
+              <p class="text-xs">
+                {tag.value}
+              </p>
+            </a>
+          
+            <button
+              type="button"
+              class="text-gray-100 bg-immich-primary/95 rounded-tr-full rounded-br-full place-items-center place-content-center pr-1 pl-0.5 py-0.5 hover:bg-immich-primary/80 transition-all"
+              title="Remove tag"
+              onclick={() => handleRemoveTag(tag.id)}
+            >
+              <Icon path={mdiClose} size="0.75rem" />
+            </button>
+          </div>
+          {/each}
+        </div>
       </div>
-      
-      <!-- Time indicator and play controls -->
-      <div class="flex justify-between items-center text-xs text-white mt-1">
-        <span>{formatTime(currentTime)}</span>
-        
-        <!-- Play/Pause button -->
-        <button
-          class="text-white rounded-full p-1 hover:bg-black hover:bg-opacity-20 transition-all"
-          onclick={(e) => {
-            e.stopPropagation();
-            togglePlayPause();
-          }}
-        >
-          <Icon path={isPlaying ? mdiPause : mdiPlay} size="1.2rem" />
-        </button>
-        
-        <!-- Mute/Unmute button -->
-        <button
-          class="text-white rounded-full p-1 hover:bg-black hover:bg-opacity-20 transition-all"
-          onclick={(e) => {
-            e.stopPropagation();
-            toggleMute();
-          }}
-        >
-          <Icon path={videoPlayer?.muted ? mdiVolumeMute : mdiVolumeHigh} size="1.2rem" />
-        </button>
-        
-        <span>{formatTime(duration)}</span>
-      </div>
-    </div>
-  {/if}
+    {/if}
+  </div>
+</div>
+{/if}
+
+<!-- Preset Tags Quick Access Panel - only show when showTagElements is true -->
+{#if isOwner && asset?.id && !isSharedLink() && !isZoomed && showTagElements}
+<div class="z-[1001] fixed left-2 bottom-[20%]">
+  <div class="flex flex-col gap-1">
+    {#each presetTags as presetTag (presetTag.id)}
+      <button
+        type="button"
+        class={`px-2 py-1 rounded-lg text-white transition-all flex items-center gap-1 ${
+          isPresetTagSelected(presetTag.value) ? 'bg-immich-primary' : 'bg-black bg-opacity-40 hover:bg-immich-primary/50'
+        }`}
+        onclick={(event) => togglePresetTag(presetTag.value, event)}
+      >
+        <Icon path={mdiTag} size="0.6rem" />
+        <span class="text-xs font-medium">{presetTag.value}</span>
+      </button>
+    {/each}
+  </div>
+</div>
+{/if}
+
+<!-- Custom progress bar - shows only when showControls is true and not zoomed -->
+{#if showControls && !isZoomed}
+<div 
+  class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-40 px-2 py-1 transition-opacity mx-auto max-w-[80%]"
+  transition:fade={{ duration: 150 }}
+>
+  <div 
+    class="relative h-2 bg-gray-600 rounded cursor-pointer"
+    onmousedown={handleProgressBarClick}
+    ontouchstart={handleProgressBarClick}
+  >
+    <div 
+      class="absolute top-0 left-0 h-full bg-immich-primary rounded"
+      style={`width: ${progress}%`}
+    ></div>
+  </div>
+  
+  <!-- Time indicator and play controls -->
+  <div class="flex justify-between items-center text-xs text-white mt-1">
+    <span>{formatTime(currentTime)}</span>
+    
+    <!-- Play/Pause button -->
+    <button
+      class="text-white rounded-full p-1 hover:bg-black hover:bg-opacity-20 transition-all"
+      onclick={(e) => {
+        e.stopPropagation();
+        togglePlayPause();
+      }}
+    >
+      <Icon path={isPlaying ? mdiPause : mdiPlay} size="1.2rem" />
+    </button>
+    
+    <!-- Mute/Unmute button -->
+    <button
+      class="text-white rounded-full p-1 hover:bg-black hover:bg-opacity-20 transition-all"
+      onclick={(e) => {
+        e.stopPropagation();
+        toggleMute();
+      }}
+    >
+      <Icon path={videoPlayer?.muted ? mdiVolumeMute : mdiVolumeHigh} size="1.2rem" />
+    </button>
+    
+    <span>{formatTime(duration)}</span>
+  </div>
+</div>
+{/if}
 </div>
 </div>
 
 {#if isTagFormOpen}
 <Portal>
-  <TagAssetForm onTag={(tagsIds) => handleTag(tagsIds)} onCancel={handleCancelTag} />
+<TagAssetForm onTag={(tagsIds) => handleTag(tagsIds)} onCancel={handleCancelTag} />
 </Portal>
 {/if}
