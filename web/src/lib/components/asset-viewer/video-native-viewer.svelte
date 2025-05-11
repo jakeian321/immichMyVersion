@@ -61,7 +61,8 @@
   let forceMuted = $state(false);
   let isScrubbing = $state(false);
   let isPlaying = $state(false);
-  let isTagProcessing = $state(false); // New state to track tag processing
+  // State to track tag processing - renamed to avoid conflict
+  let isTagProcessingActive = $state(false);
 
   // NEW STATE VARIABLE for tag buttons initialization
   let tagButtonsInitialized = $state(false);
@@ -150,55 +151,74 @@
   // Store buttons being processed to prevent multiple clicks
   let processingTagIds = $state<string[]>([]);
 
+
+  const checkTagSelected = (tagValue: string): boolean => {
+    if (!asset?.tags) return false;
+    return asset.tags.some(tag => tag.value.toLowerCase() === tagValue.toLowerCase());
+  };
+
+  const checkTagProcessing = (tagValue: string): boolean => {
+    return processingTagIds.includes(tagValue.toLowerCase());
+  };
+
+  const initializeTags = async () => {
+    if (!assetId) return;
+    
+    try {
+      // Always get fresh asset info
+      asset = await getAssetInfo({ id: assetId });
+      
+      // Get all tags in the system
+      const allTags = await getAllTags();
+      
+      // Create a map of tag values to IDs (case insensitive)
+      availableTagsMap = allTags.reduce((map: Record<string, string>, tag) => {
+        map[tag.value.toLowerCase()] = tag.id;
+        return map; 
+      }, {});
+      
+      // Make sure all preset tags exist in the system
+      const missingTags = presetTags.filter(tag => 
+        !availableTagsMap[tag.value.toLowerCase()]);
+      
+      if (missingTags.length > 0) {
+        console.warn('Some preset tags are not in the system:', 
+          missingTags.map(t => t.value).join(', '));
+      }
+      
+      // Reset state
+      processingTagIds = [];
+      isTagProcessingActive = false;
+    } catch (error) {
+      console.error('Failed to initialize tags:', error);
+      handleError(error, $t('errors.unable_to_load_tags'));
+    }
+  };
+
   onMount(async () => {
     if (videoPlayer) {
       assetFileUrl = getAssetPlaybackUrl({ id: assetId, cacheKey });
-      forceMuted = false; // Ensure volume is on by default
-      $videoViewerMuted = false; // Ensure volume is on by default
+      forceMuted = false;
+      $videoViewerMuted = false;
       videoPlayer.load();
     }
 
-    // Fetch asset info if not provided
-    if (!asset?.id && assetId) {
-      try {
-        asset = await getAssetInfo({ id: assetId });
-      } catch (error) {
-        handleError(error, $t('errors.unable_to_load_asset_info'));
-      }
-    }
-
-    // Initialize selected preset tags based on the asset's current tags
-    if (asset?.tags) {
-      selectedPresetTags = asset.tags
-        .filter((tag) => presetTags.some((preset) => preset.value === tag.value))
-        .map((tag) => tag.value);
-    }
-
-    // Get all available tags from the system to find IDs for our preset tags
-    try {
-      const allTags = await getAllTags();
-
-      // Create a mapping of tag values to their IDs
-      availableTagsMap = allTags.reduce((map: Record<string, string>, tag) => {
-        map[tag.value.toLowerCase()] = tag.id;
-        return map;
-      }, {});
-    } catch (error) {
-      handleError(error, $t('errors.unable_to_load_tags'));
-    }
-
+    // Initialize tags first before anything else tag-related
+    await initializeTags();
+    
+    // Other onMount code...
+    
     // Auto-hide controls after 3 seconds
     controlsTimeout = setTimeout(() => {
       showControls = false;
     }, 3000);
 
-    // Reset tag display states when changing assets
+    // Reset tag display states
     showTagElements = false;
     hasReachedTagDisplayThreshold = false;
-    
-    // Initialize tag buttons early
     tagButtonsInitialized = true;
   });
+
 
   onDestroy(() => {
     if (videoPlayer) {
@@ -519,7 +539,7 @@
     if (!asset?.id) return;
 
     try {
-      isTagProcessing = true;
+      isTagProcessingActive = true;
       const ids = await tagAssets({ tagIds, assetIds: [asset.id], showNotification: false });
       
       if (ids) {
@@ -538,7 +558,7 @@
     } catch (error) {
       handleError(error, $t('errors.unable_to_add_tag'));
     } finally {
-      isTagProcessing = false;
+      isTagProcessingActive = false;
     }
   };
 
@@ -547,7 +567,7 @@
     if (!asset?.id) return;
 
     try {
-      isTagProcessing = true;
+      isTagProcessingActive = true;
       const ids = await removeTag({ tagIds: [tagId], assetIds: [asset.id], showNotification: false });
       
       if (ids) {
@@ -564,85 +584,84 @@
     } catch (error) {
       handleError(error, $t('errors.unable_to_remove_tag'));
     } finally {
-      isTagProcessing = false;
+      isTagProcessingActive = false;
     }
   };
 
-  // NEW: Completely rewritten tag button click handler
-  const handleTagButtonClick = (event: MouseEvent, tagValue: string) => {
-    // Ensure event doesn't bubble up to video controls
-    event?.preventDefault();
-    event?.stopPropagation();
+  // IMPROVED: Fixed the tag application function to work more reliably
+  const applyTagToAsset = async (tagValue: string, force: boolean = false) => {
+    // Don't proceed if asset is missing
+    if (!asset?.id) return false;
+
+    // Get a lowercase version for case-insensitive comparison
+    const tagValueLower = tagValue.toLowerCase();
     
-    // Don't proceed if asset is missing or already processing this tag
-    if (!asset?.id || processingTagIds.includes(tagValue.toLowerCase())) {
-      return;
+    // Skip if already processing this tag and not forced
+    if (!force && processingTagIds.includes(tagValueLower)) {
+      return false;
     }
     
-    // Call the tag toggle with a forceful approach
-    processTagToggle(tagValue);
-  };
+    // Mark as processing immediately to prevent double-clicks
+    processingTagIds = [...processingTagIds, tagValueLower];
+    isTagProcessingActive = true;
 
-  // NEW: Direct processing function that doesn't depend on event handling
-  const processTagToggle = async (tagValue: string) => {
-    const tagToProcess = tagValue.toLowerCase();
+    let success = false;
     
-    // Skip if already processing
-    if (processingTagIds.includes(tagToProcess)) {
-      return;
-    }
-    
-    // Set processing state immediately
-    processingTagIds = [...processingTagIds, tagToProcess];  
-    isTagProcessing = true;
-
     try {
-      // Find if tag exists
-      const existingTag = asset.tags.find(
-        tag => tag.value.toLowerCase() === tagToProcess
-      );
-
-      if (existingTag) {
-        // Remove existing tag
-        await removeTag({ 
-          tagIds: [existingTag.id], 
-          assetIds: [asset.id], 
-          showNotification: false 
-        });
+      // Find if this tag is already applied to asset
+      const tagExists = asset.tags.some(tag => tag.value.toLowerCase() === tagValueLower);
+      
+      if (tagExists) {
+        // Remove tag if it exists
+        const existingTag = asset.tags.find(tag => tag.value.toLowerCase() === tagValueLower);
+        if (existingTag) {
+          const result = await removeTag({ 
+            tagIds: [existingTag.id], 
+            assetIds: [asset.id], 
+            showNotification: false 
+          });
+          success = !!result;
+        }
       } else {
-        // Add new tag
-        const tagId = availableTagsMap[tagToProcess];
+        // Add tag if we have its ID
+        const tagId = availableTagsMap[tagValueLower];
         if (tagId) {
-          await tagAssets({ 
+          const result = await tagAssets({ 
             tagIds: [tagId], 
             assetIds: [asset.id], 
             showNotification: false 
           });
+          success = !!result;
         }
       }
       
-      // Force refresh asset data
-      asset = await getAssetInfo({ id: asset.id });
-      
-      // Update selected preset tags
-      if (asset?.tags) {
-        selectedPresetTags = asset.tags
-          .filter((tag) => presetTags.some((preset) => 
-            preset.value.toLowerCase() === tag.value.toLowerCase()))
-          .map((tag) => tag.value);
+      if (success) {
+        // Force refresh asset data
+        asset = await getAssetInfo({ id: asset.id });
       }
     } catch (error) {
-      handleError(error, $t('errors.unable_to_update_tag'));
+      console.error(`Error applying tag ${tagValue}:`, error);
+      handleError(error, $t(tagExists ? 'errors.unable_to_remove_tag' : 'errors.unable_to_add_tag'));
+      success = false;
     } finally {
-      // Clear processing state
-      setTimeout(() => {
-        processingTagIds = processingTagIds.filter(id => id !== tagToProcess);
-        
-        if (processingTagIds.length === 0) {
-          isTagProcessing = false;
-        }
-      }, 500);
+      // Clear this tag from processing state
+      processingTagIds = processingTagIds.filter(id => id !== tagValueLower);
+      if (processingTagIds.length === 0) {
+        isTagProcessingActive = false;
+      }
     }
+    
+    return success;
+  };
+
+  // FIXED: Improved tag button handling
+  const handleTagButtonClick = (event: MouseEvent, tagValue: string) => {
+    // Stop propagation to prevent bubbling
+    event?.preventDefault();
+    event?.stopPropagation();
+    
+    // Call our clean apply function
+    applyTagToAsset(tagValue);
   };
 
   // Check if a preset tag is already applied to the asset
@@ -977,23 +996,22 @@
 <div class="z-[1001] fixed left-2 bottom-[20%]">
   <div class="flex flex-col gap-1">
     {#each presetTags as presetTag (presetTag.id)}
-    <button
-  type="button"
-  class={`px-2 py-1 rounded-lg text-white transition-all flex items-center gap-1 ${
-    isPresetTagSelected(presetTag.value) ? 'bg-immich-primary' : 'bg-black bg-opacity-40 hover:bg-immich-primary/50'
-  }`}
-onclick={(event) => handleTagButtonClick(event, presetTag.value)}
-disabled={isTagBeingProcessed(presetTag.value)}
->
-  <Icon path={mdiTag} size="0.6rem" />
-  <span class="text-xs font-medium">{presetTag.value}</span>
-  {#if isTagBeingProcessed(presetTag.value)}
-    <span class="ml-1 inline-block h-3 w-3">
-      <LoadingSpinner size="xs" />
-    </span>
-  {/if}
-</button>
-
+      <button
+        type="button"
+        class={`px-2 py-1 rounded-lg text-white transition-all flex items-center gap-1 ${
+          checkTagSelected(presetTag.value) ? 'bg-immich-primary' : 'bg-black bg-opacity-40 hover:bg-immich-primary/50'
+        }`}
+        onclick={(event) => handleTagButtonClick(event, presetTag.value)}
+        disabled={checkTagProcessing(presetTag.value)}
+      >
+        <Icon path={mdiTag} size="0.6rem" />
+        <span class="text-xs font-medium">{presetTag.value}</span>
+        {#if checkTagProcessing(presetTag.value)}
+          <span class="ml-1 inline-block h-3 w-3">
+            <LoadingSpinner size="xs" />
+          </span>
+        {/if}
+      </button>
     {/each}
   </div>
 </div>
