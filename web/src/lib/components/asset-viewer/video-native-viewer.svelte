@@ -20,7 +20,18 @@
   import { isSharedLink } from '$lib/utils';
   import { removeTag, tagAssets } from '$lib/utils/asset-utils';
   import { getAssetInfo, type AssetResponseDto, getAllTags } from '@immich/sdk';
-  import { mdiClose, mdiPlus, mdiTag, mdiEyeOff, mdiEye, mdiMagnifyMinusOutline, mdiPlay, mdiPause, mdiVolumeMute, mdiVolumeHigh } from '@mdi/js';
+  import {
+    mdiClose,
+    mdiPlus,
+    mdiTag,
+    mdiEyeOff,
+    mdiEye,
+    mdiMagnifyMinusOutline,
+    mdiPlay,
+    mdiPause,
+    mdiVolumeMute,
+    mdiVolumeHigh,
+  } from '@mdi/js';
 
   interface Props {
     assetId: string;
@@ -99,7 +110,7 @@
 
   // Toggle visibility for all tag elements - NOW FALSE BY DEFAULT
   let showTagElements = $state(false);
-  
+
   // NEW: Track if we've passed the threshold to show tags
   let hasReachedTagDisplayThreshold = $state(false);
   const TAG_DISPLAY_THRESHOLD = 0.9; // Show tags at 90% of video completion
@@ -122,8 +133,10 @@
     { id: 'preset-walk', value: 'walk' },
     { id: 'preset-tongue', value: 'tongue' },
     { id: 'preset-ahegao', value: 'ahegao' },
-    { id: 'preset-editing', value: 'editing' },
     { id: 'preset-tit', value: 'tit' },
+    { id: 'preset-bikini', value: 'bikini' },
+    { id: 'preset-milf', value: 'milf' },
+    { id: 'preset-editing', value: 'editing' },
   ];
 
   // Map to store available tag IDs from the system
@@ -151,10 +164,9 @@
   // Store buttons being processed to prevent multiple clicks
   let processingTagIds = $state<string[]>([]);
 
-
   const checkTagSelected = (tagValue: string): boolean => {
     if (!asset?.tags) return false;
-    return asset.tags.some(tag => tag.value.toLowerCase() === tagValue.toLowerCase());
+    return asset.tags.some((tag) => tag.value.toLowerCase() === tagValue.toLowerCase());
   };
 
   const checkTagProcessing = (tagValue: string): boolean => {
@@ -163,29 +175,27 @@
 
   const initializeTags = async () => {
     if (!assetId) return;
-    
+
     try {
       // Always get fresh asset info
       asset = await getAssetInfo({ id: assetId });
-      
+
       // Get all tags in the system
       const allTags = await getAllTags();
-      
+
       // Create a map of tag values to IDs (case insensitive)
       availableTagsMap = allTags.reduce((map: Record<string, string>, tag) => {
         map[tag.value.toLowerCase()] = tag.id;
-        return map; 
+        return map;
       }, {});
-      
+
       // Make sure all preset tags exist in the system
-      const missingTags = presetTags.filter(tag => 
-        !availableTagsMap[tag.value.toLowerCase()]);
-      
+      const missingTags = presetTags.filter((tag) => !availableTagsMap[tag.value.toLowerCase()]);
+
       if (missingTags.length > 0) {
-        console.warn('Some preset tags are not in the system:', 
-          missingTags.map(t => t.value).join(', '));
+        console.warn('Some preset tags are not in the system:', missingTags.map((t) => t.value).join(', '));
       }
-      
+
       // Reset state
       processingTagIds = [];
       isTagProcessingActive = false;
@@ -205,9 +215,9 @@
 
     // Initialize tags first before anything else tag-related
     await initializeTags();
-    
+
     // Other onMount code...
-    
+
     // Auto-hide controls after 3 seconds
     controlsTimeout = setTimeout(() => {
       showControls = false;
@@ -219,12 +229,11 @@
     tagButtonsInitialized = true;
   });
 
-
   onDestroy(() => {
     if (videoPlayer) {
       videoPlayer.src = '';
     }
-    
+
     // Clear any timeouts
     if (controlsTimeout) {
       clearTimeout(controlsTimeout);
@@ -377,7 +386,7 @@
     duration = videoPlayer.duration || 0;
     progress = duration ? (currentTime / duration) * 100 : 0;
     isPlaying = !videoPlayer.paused;
-    
+
     // Check if we've reached the threshold to display tags - simpler logic
     if (!hasReachedTagDisplayThreshold && duration > 0) {
       const progressPercentage = currentTime / duration;
@@ -391,13 +400,13 @@
   // FIXED: Improved progress bar click handling
   const handleProgressBarClick = (event: MouseEvent | TouchEvent) => {
     if (!videoPlayer || isZoomed) return;
-    
+
     const progressBar = event.currentTarget as HTMLDivElement;
     const rect = progressBar.getBoundingClientRect();
-    
+
     // Handle both mouse and touch events
     let clientX: number;
-    
+
     if ('touches' in event) {
       // Touch event
       clientX = event.touches[0].clientX;
@@ -405,13 +414,13 @@
       // Mouse event
       clientX = event.clientX;
     }
-    
+
     const clickPosition = (clientX - rect.left) / rect.width;
     videoPlayer.currentTime = clickPosition * videoPlayer.duration;
-    
+
     // Show visual feedback
     progress = clickPosition * 100;
-    
+
     // Prevent event propagation to avoid triggering play/pause
     event.stopPropagation();
   };
@@ -443,7 +452,7 @@
   const handleVideoTouchEnd = (event: TouchEvent) => {
     // Calculate touch duration
     const touchDuration = Date.now() - touchStartTime;
-    
+
     // Only toggle play/pause if it was a simple tap (not a swipe or pan)
     if (!isTouchMove && touchDuration < TAP_DURATION_THRESHOLD && !isPanning && !isZoomed) {
       togglePlayPause();
@@ -454,9 +463,9 @@
   // FIXED: Improved play/pause toggle
   const togglePlayPause = () => {
     if (!videoPlayer) return;
-    
+
     if (videoPlayer.paused) {
-      videoPlayer.play().catch(error => handleError(error, $t('errors.unable_to_play_video')));
+      videoPlayer.play().catch((error) => handleError(error, $t('errors.unable_to_play_video')));
       isPlaying = true;
     } else {
       videoPlayer.pause();
@@ -471,13 +480,13 @@
   // Toggle mute state
   const toggleMute = () => {
     if (!videoPlayer) return;
-    
+
     // Stop event propagation if this function is called from a click event
     // to prevent other handlers from toggling playback
     try {
       event?.stopPropagation();
     } catch (e) {}
-    
+
     // Set both state variables consistently
     videoPlayer.muted = !videoPlayer.muted;
     $videoViewerMuted = videoPlayer.muted;
@@ -541,7 +550,7 @@
     try {
       isTagProcessingActive = true;
       const ids = await tagAssets({ tagIds, assetIds: [asset.id], showNotification: false });
-      
+
       if (ids) {
         isTagFormOpen = false;
       }
@@ -569,7 +578,7 @@
     try {
       isTagProcessingActive = true;
       const ids = await removeTag({ tagIds: [tagId], assetIds: [asset.id], showNotification: false });
-      
+
       if (ids) {
         // Refresh asset info
         asset = await getAssetInfo({ id: asset.id });
@@ -595,30 +604,30 @@
 
     // Get a lowercase version for case-insensitive comparison
     const tagValueLower = tagValue.toLowerCase();
-    
+
     // Skip if already processing this tag and not forced
     if (!force && processingTagIds.includes(tagValueLower)) {
       return false;
     }
-    
+
     // Mark as processing immediately to prevent double-clicks
     processingTagIds = [...processingTagIds, tagValueLower];
     isTagProcessingActive = true;
 
     let success = false;
-    
+
     try {
       // Find if this tag is already applied to asset
-      const tagExists = asset.tags.some(tag => tag.value.toLowerCase() === tagValueLower);
-      
+      const tagExists = asset.tags.some((tag) => tag.value.toLowerCase() === tagValueLower);
+
       if (tagExists) {
         // Remove tag if it exists
-        const existingTag = asset.tags.find(tag => tag.value.toLowerCase() === tagValueLower);
+        const existingTag = asset.tags.find((tag) => tag.value.toLowerCase() === tagValueLower);
         if (existingTag) {
-          const result = await removeTag({ 
-            tagIds: [existingTag.id], 
-            assetIds: [asset.id], 
-            showNotification: false 
+          const result = await removeTag({
+            tagIds: [existingTag.id],
+            assetIds: [asset.id],
+            showNotification: false,
           });
           success = !!result;
         }
@@ -626,15 +635,15 @@
         // Add tag if we have its ID
         const tagId = availableTagsMap[tagValueLower];
         if (tagId) {
-          const result = await tagAssets({ 
-            tagIds: [tagId], 
-            assetIds: [asset.id], 
-            showNotification: false 
+          const result = await tagAssets({
+            tagIds: [tagId],
+            assetIds: [asset.id],
+            showNotification: false,
           });
           success = !!result;
         }
       }
-      
+
       if (success) {
         // Force refresh asset data
         asset = await getAssetInfo({ id: asset.id });
@@ -645,12 +654,12 @@
       success = false;
     } finally {
       // Clear this tag from processing state
-      processingTagIds = processingTagIds.filter(id => id !== tagValueLower);
+      processingTagIds = processingTagIds.filter((id) => id !== tagValueLower);
       if (processingTagIds.length === 0) {
         isTagProcessingActive = false;
       }
     }
-    
+
     return success;
   };
 
@@ -659,7 +668,7 @@
     // Stop propagation to prevent bubbling
     event?.preventDefault();
     event?.stopPropagation();
-    
+
     // Call our clean apply function
     applyTagToAsset(tagValue);
   };
@@ -668,7 +677,7 @@
   const isPresetTagSelected = (tagValue: string): boolean => {
     return asset?.tags?.some((tag) => tag.value.toLowerCase() === tagValue.toLowerCase()) || false;
   };
-  
+
   // Check if a tag is currently being processed
   const isTagBeingProcessed = (tagValue: string): boolean => {
     return processingTagIds.includes(tagValue.toLowerCase());
@@ -767,7 +776,7 @@
       // End of all touches
       const wasPanning = isPanning;
       isPanning = false;
-      
+
       // Only handle tap if we weren't panning
       if (!wasPanning) {
         handleVideoTouchEnd(event);
@@ -815,7 +824,7 @@
     onmousemove={showVideoControls}
     ontouchmove={showVideoControls}
   >
-      <video
+    <video
       bind:this={videoPlayer}
       loop={$loopVideoPreference && loopVideo}
       autoplay
@@ -829,8 +838,12 @@
       oncanplay={(e) => handleCanPlay(e.currentTarget)}
       onended={onVideoEnded}
       onvolumechange={handleVolumeChange}
-      onplay={() => { isPlaying = true; }}
-      onpause={() => { isPlaying = false; }}
+      onplay={() => {
+        isPlaying = true;
+      }}
+      onpause={() => {
+        isPlaying = false;
+      }}
       onseeking={() => (isScrubbing = true)}
       onseeked={() => (isScrubbing = false)}
       onplaying={(e) => {
@@ -855,7 +868,6 @@
     >
     </video>
 
-
     {#if isLoading}
       <div class="absolute flex place-content-center place-items-center">
         <LoadingSpinner />
@@ -866,209 +878,207 @@
       <FaceEditor htmlElement={videoPlayer} {containerWidth} {containerHeight} {assetId} />
     {/if}
 
-  <!-- Fast Forward Button - hide when zoomed -->
-  {#if !isZoomed}
-  <div class="z-[1001] fixed left-0 bottom-[83%]">
-    <button
-      class="bg-transparent text-white rounded-full p-2"
-      onmousedown={startFastForward}
-      onmouseup={stopFastForward}
-      onmouseleave={stopFastForward}
-      ontouchstart={startFastForward}
-      ontouchend={stopFastForward}
-    >
-      {isForwarding ? '3.5x' : 'S'} ⏩
-    </button>
-  </div>
-{/if}
-
-
-<!-- Auto Skip Button - hide when zoomed -->
-{#if !isZoomed}
-  <div class="z-[1001] fixed left-14 bottom-[88%]">
-    <button
-      class={`bg-black bg-opacity-60 text-white rounded-full p-3 transition-all ${isAutoSkip ? 'bg-immich-primary' : 'bg-black bg-opacity-60'}`}
-      onclick={toggleAutoSkip}
-    >
-      <span class="font-bold">A</span>
-      {isAutoSkip ? '4x' : ''}
-    </button>
-  </div>
-{/if}
-
-<!-- Reset Zoom Button - only show when zoomed in -->
-{#if isZoomed && showZoomControls}
-  <div class="z-[1001] fixed right-4 bottom-4" transition:fade={{ duration: 150 }}>
-    <button
-      type="button"
-      class="bg-black bg-opacity-60 text-white rounded-full p-3 hover:bg-opacity-80 transition-all"
-      title="Reset Zoom"
-      onclick={resetZoom}
-    >
-      <Icon path={mdiMagnifyMinusOutline} size="1.5rem" />
-    </button>
-  </div>
-
-  <!-- Zoom level indicator -->
-  <div
-    class="z-[1001] fixed left-4 bottom-4 bg-black bg-opacity-60 text-white px-3 py-1 rounded-full"
-    transition:fade={{ duration: 150 }}
-  >
-    {Math.round(scale * 100)}%
-  </div>
-{/if}
-
-<!-- Hide/Show Tags Button - only show when not zoomed -->
-{#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
-  <div class="z-[1001] fixed left-0 bottom-[88%]">
-    <button
-      type="button"
-      class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
-      title={showTagElements ? 'Hide Tags' : 'Show Tags'}
-      onclick={toggleTagElementsVisibility}
-    >
-      <Icon path={showTagElements ? mdiEyeOff : mdiEye} size="1.2rem" />
-    </button>
-  </div>
-{/if}
-
-<!-- Tag Actions Panel - left side -->
-{#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
-  <div class="z-[1001] fixed left-0 bottom-[78%]">
-    <div class="flex flex-col">
-      <!-- Always visible add tag button -->
-      <button
-        type="button"
-        class="bg-immich-primary text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1 hover:bg-immich-primary/80 transition-all"
-        title="Add tag"
-        onclick={handleAddTag}
-      >
-      <Icon path={mdiPlus} size="0.75rem" />
-      <span class="text-xs">Add Tag</span>
-    </button>
-
-    <!-- Toggle for existing tags -->
-    {#if tags.length > 0}
-      <button 
-        type="button"
-        class="bg-black bg-opacity-40 text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1"
-        title="Toggle Tags"
-        onclick={toggleTagsPanel}
-      >
-        <span class="text-xs">View Tags {showTagsPanel ? '▲' : '▼'}</span>
-      </button>
+    <!-- Fast Forward Button - hide when zoomed -->
+    {#if !isZoomed}
+      <div class="z-[1001] fixed left-0 bottom-[83%]">
+        <button
+          class="bg-transparent text-white rounded-full p-2"
+          onmousedown={startFastForward}
+          onmouseup={stopFastForward}
+          onmouseleave={stopFastForward}
+          ontouchstart={startFastForward}
+          ontouchend={stopFastForward}
+        >
+          {isForwarding ? '3.5x' : 'S'} ⏩
+        </button>
+      </div>
     {/if}
-    
-    {#if showTagsPanel && tags.length > 0}
-      <!-- Reduced max-width from 300px to 200px -->
-      <div class="bg-black bg-opacity-40 rounded p-2 max-w-[200px]">
-        <div class="flex flex-wrap gap-1">
-          {#each tags as tag (tag.id)}
-          <div class="flex group transition-all">
-            <a
-              class="inline-block h-min whitespace-nowrap pl-2 pr-1 py-0.5 text-center align-baseline leading-none text-gray-100 bg-immich-primary rounded-tl-full rounded-bl-full hover:bg-immich-primary/80 transition-all"
-              href={encodeURI(`${AppRoute.TAGS}/?path=${tag.value}`)}
-            >
-              <p class="text-xs">
-                {tag.value}
-              </p>
-            </a>
-          
+
+    <!-- Auto Skip Button - hide when zoomed -->
+    {#if !isZoomed}
+      <div class="z-[1001] fixed left-14 bottom-[88%]">
+        <button
+          class={`bg-black bg-opacity-60 text-white rounded-full p-3 transition-all ${isAutoSkip ? 'bg-immich-primary' : 'bg-black bg-opacity-60'}`}
+          onclick={toggleAutoSkip}
+        >
+          <span class="font-bold">A</span>
+          {isAutoSkip ? '4x' : ''}
+        </button>
+      </div>
+    {/if}
+
+    <!-- Reset Zoom Button - only show when zoomed in -->
+    {#if isZoomed && showZoomControls}
+      <div class="z-[1001] fixed right-4 bottom-4" transition:fade={{ duration: 150 }}>
+        <button
+          type="button"
+          class="bg-black bg-opacity-60 text-white rounded-full p-3 hover:bg-opacity-80 transition-all"
+          title="Reset Zoom"
+          onclick={resetZoom}
+        >
+          <Icon path={mdiMagnifyMinusOutline} size="1.5rem" />
+        </button>
+      </div>
+
+      <!-- Zoom level indicator -->
+      <div
+        class="z-[1001] fixed left-4 bottom-4 bg-black bg-opacity-60 text-white px-3 py-1 rounded-full"
+        transition:fade={{ duration: 150 }}
+      >
+        {Math.round(scale * 100)}%
+      </div>
+    {/if}
+
+    <!-- Hide/Show Tags Button - only show when not zoomed -->
+    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+      <div class="z-[1001] fixed left-0 bottom-[88%]">
+        <button
+          type="button"
+          class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
+          title={showTagElements ? 'Hide Tags' : 'Show Tags'}
+          onclick={toggleTagElementsVisibility}
+        >
+          <Icon path={showTagElements ? mdiEyeOff : mdiEye} size="1.2rem" />
+        </button>
+      </div>
+    {/if}
+
+    <!-- Tag Actions Panel - left side -->
+    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+      <div class="z-[1001] fixed left-0 bottom-[78%]">
+        <div class="flex flex-col">
+          <!-- Always visible add tag button -->
+          <button
+            type="button"
+            class="bg-immich-primary text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1 hover:bg-immich-primary/80 transition-all"
+            title="Add tag"
+            onclick={handleAddTag}
+          >
+            <Icon path={mdiPlus} size="0.75rem" />
+            <span class="text-xs">Add Tag</span>
+          </button>
+
+          <!-- Toggle for existing tags -->
+          {#if tags.length > 0}
             <button
               type="button"
-              class="text-gray-100 bg-immich-primary/95 rounded-tr-full rounded-br-full place-items-center place-content-center pr-1 pl-0.5 py-0.5 hover:bg-immich-primary/80 transition-all"
-              title="Remove tag"
-              onclick={() => handleRemoveTag(tag.id)}
+              class="bg-black bg-opacity-40 text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1"
+              title="Toggle Tags"
+              onclick={toggleTagsPanel}
             >
-              <Icon path={mdiClose} size="0.75rem" />
+              <span class="text-xs">View Tags {showTagsPanel ? '▲' : '▼'}</span>
             </button>
-          </div>
+          {/if}
+
+          {#if showTagsPanel && tags.length > 0}
+            <!-- Reduced max-width from 300px to 200px -->
+            <div class="bg-black bg-opacity-40 rounded p-2 max-w-[200px]">
+              <div class="flex flex-wrap gap-1">
+                {#each tags as tag (tag.id)}
+                  <div class="flex group transition-all">
+                    <a
+                      class="inline-block h-min whitespace-nowrap pl-2 pr-1 py-0.5 text-center align-baseline leading-none text-gray-100 bg-immich-primary rounded-tl-full rounded-bl-full hover:bg-immich-primary/80 transition-all"
+                      href={encodeURI(`${AppRoute.TAGS}/?path=${tag.value}`)}
+                    >
+                      <p class="text-xs">
+                        {tag.value}
+                      </p>
+                    </a>
+
+                    <button
+                      type="button"
+                      class="text-gray-100 bg-immich-primary/95 rounded-tr-full rounded-br-full place-items-center place-content-center pr-1 pl-0.5 py-0.5 hover:bg-immich-primary/80 transition-all"
+                      title="Remove tag"
+                      onclick={() => handleRemoveTag(tag.id)}
+                    >
+                      <Icon path={mdiClose} size="0.75rem" />
+                    </button>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
+      </div>
+    {/if}
+
+    <!-- Preset Tags Quick Access Panel - only show when showTagElements is true -->
+    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && showTagElements}
+      <div class="z-[1001] fixed left-2 bottom-[20%]">
+        <div class="flex flex-col gap-1">
+          {#each presetTags as presetTag (presetTag.id)}
+            <button
+              type="button"
+              class={`px-2 py-1 rounded-lg text-white transition-all flex items-center gap-1 ${
+                checkTagSelected(presetTag.value)
+                  ? 'bg-immich-primary'
+                  : 'bg-black bg-opacity-40 hover:bg-immich-primary/50'
+              }`}
+              onclick={(event) => handleTagButtonClick(event, presetTag.value)}
+              disabled={checkTagProcessing(presetTag.value)}
+            >
+              <Icon path={mdiTag} size="0.6rem" />
+              <span class="text-xs font-medium">{presetTag.value}</span>
+              {#if checkTagProcessing(presetTag.value)}
+                <span class="ml-1 inline-block h-3 w-3">
+                  <LoadingSpinner size="xs" />
+                </span>
+              {/if}
+            </button>
           {/each}
+        </div>
+      </div>
+    {/if}
+
+    <!-- Custom progress bar - shows only when showControls is true and not zoomed -->
+    {#if showControls && !isZoomed}
+      <div
+        class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-40 px-2 py-1 transition-opacity mx-auto max-w-[80%]"
+        transition:fade={{ duration: 150 }}
+      >
+        <div
+          class="relative h-2 bg-gray-600 rounded cursor-pointer"
+          onmousedown={handleProgressBarClick}
+          ontouchstart={handleProgressBarClick}
+        >
+          <div class="absolute top-0 left-0 h-full bg-immich-primary rounded" style={`width: ${progress}%`}></div>
+        </div>
+
+        <!-- Time indicator and play controls -->
+        <div class="flex justify-between items-center text-xs text-white mt-1">
+          <span>{formatTime(currentTime)}</span>
+
+          <!-- Play/Pause button -->
+          <button
+            class="text-white rounded-full p-1 hover:bg-black hover:bg-opacity-20 transition-all"
+            onclick={(e) => {
+              e.stopPropagation();
+              togglePlayPause();
+            }}
+          >
+            <Icon path={isPlaying ? mdiPause : mdiPlay} size="1.2rem" />
+          </button>
+
+          <!-- Mute/Unmute button -->
+          <button
+            class="text-white rounded-full p-1 hover:bg-black hover:bg-opacity-20 transition-all"
+            onclick={(e) => {
+              e.stopPropagation();
+              toggleMute();
+            }}
+          >
+            <Icon path={videoPlayer?.muted ? mdiVolumeMute : mdiVolumeHigh} size="1.2rem" />
+          </button>
+
+          <span>{formatTime(duration)}</span>
         </div>
       </div>
     {/if}
   </div>
 </div>
-{/if}
-
-<!-- Preset Tags Quick Access Panel - only show when showTagElements is true -->
-{#if isOwner && asset?.id && !isSharedLink() && !isZoomed && showTagElements}
-<div class="z-[1001] fixed left-2 bottom-[20%]">
-  <div class="flex flex-col gap-1">
-    {#each presetTags as presetTag (presetTag.id)}
-      <button
-        type="button"
-        class={`px-2 py-1 rounded-lg text-white transition-all flex items-center gap-1 ${
-          checkTagSelected(presetTag.value) ? 'bg-immich-primary' : 'bg-black bg-opacity-40 hover:bg-immich-primary/50'
-        }`}
-        onclick={(event) => handleTagButtonClick(event, presetTag.value)}
-        disabled={checkTagProcessing(presetTag.value)}
-      >
-        <Icon path={mdiTag} size="0.6rem" />
-        <span class="text-xs font-medium">{presetTag.value}</span>
-        {#if checkTagProcessing(presetTag.value)}
-          <span class="ml-1 inline-block h-3 w-3">
-            <LoadingSpinner size="xs" />
-          </span>
-        {/if}
-      </button>
-    {/each}
-  </div>
-</div>
-{/if}
-
-<!-- Custom progress bar - shows only when showControls is true and not zoomed -->
-{#if showControls && !isZoomed}
-<div 
-  class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-40 px-2 py-1 transition-opacity mx-auto max-w-[80%]"
-  transition:fade={{ duration: 150 }}
->
-  <div 
-    class="relative h-2 bg-gray-600 rounded cursor-pointer"
-    onmousedown={handleProgressBarClick}
-    ontouchstart={handleProgressBarClick}
-  >
-    <div 
-      class="absolute top-0 left-0 h-full bg-immich-primary rounded"
-      style={`width: ${progress}%`}
-    ></div>
-  </div>
-  
-  <!-- Time indicator and play controls -->
-  <div class="flex justify-between items-center text-xs text-white mt-1">
-    <span>{formatTime(currentTime)}</span>
-    
-    <!-- Play/Pause button -->
-    <button
-      class="text-white rounded-full p-1 hover:bg-black hover:bg-opacity-20 transition-all"
-      onclick={(e) => {
-        e.stopPropagation();
-        togglePlayPause();
-      }}
-    >
-      <Icon path={isPlaying ? mdiPause : mdiPlay} size="1.2rem" />
-    </button>
-    
-    <!-- Mute/Unmute button -->
-    <button
-      class="text-white rounded-full p-1 hover:bg-black hover:bg-opacity-20 transition-all"
-      onclick={(e) => {
-        e.stopPropagation();
-        toggleMute();
-      }}
-    >
-      <Icon path={videoPlayer?.muted ? mdiVolumeMute : mdiVolumeHigh} size="1.2rem" />
-    </button>
-    
-    <span>{formatTime(duration)}</span>
-  </div>
-</div>
-{/if}
-</div>
-</div>
 
 {#if isTagFormOpen}
-<Portal>
-<TagAssetForm onTag={(tagsIds) => handleTag(tagsIds)} onCancel={handleCancelTag} />
-</Portal>
+  <Portal>
+    <TagAssetForm onTag={(tagsIds) => handleTag(tagsIds)} onCancel={handleCancelTag} />
+  </Portal>
 {/if}
