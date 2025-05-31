@@ -115,6 +115,9 @@
   let hasReachedTagDisplayThreshold = $state(false);
   const TAG_DISPLAY_THRESHOLD = 0.9; // Show tags at 90% of video completion
 
+  // TOK tags toggle state - default is false (TOK tags hidden)
+  let showTokTags = $state(false);
+
   // Preset tags with their IDs from the system
   const presetTags = [
     { id: 'preset-low', value: 'low' },
@@ -128,6 +131,9 @@
     { id: 'preset-wiggle', value: 'wiggle' },
     { id: 'preset-pose', value: 'pose' },
     { id: 'preset-recoil', value: 'recoil' },
+    { id: 'preset-pose2', value: 'pose2' },
+    { id: 'preset-side', value: 'side' },
+    { id: 'preset-lay', value: 'lay' },
     { id: 'preset-spin', value: 'spin' },
     { id: 'preset-ass', value: 'ass' },
     { id: 'preset-walk', value: 'walk' },
@@ -210,7 +216,70 @@
       assetFileUrl = getAssetPlaybackUrl({ id: assetId, cacheKey });
       forceMuted = false;
       $videoViewerMuted = false;
+
+      // DIMENSION OVERRIDE FIX - Force dimensions BEFORE loading
+      // Override the properties immediately before any loading occurs
+      Object.defineProperty(videoPlayer, 'videoWidth', {
+        value: 576,
+        writable: false,
+        configurable: true,
+      });
+      Object.defineProperty(videoPlayer, 'videoHeight', {
+        value: 1118,
+        writable: false,
+        configurable: true,
+      });
+      console.log('Pre-loaded dimension override: forcing all videos to 576x1118');
+
+      // Also try to override the naturalWidth and naturalHeight properties
+      Object.defineProperty(videoPlayer, 'naturalWidth', {
+        value: 576,
+        writable: false,
+        configurable: true,
+      });
+      Object.defineProperty(videoPlayer, 'naturalHeight', {
+        value: 1118,
+        writable: false,
+        configurable: true,
+      });
+
+      // Set initial style properties to force the aspect ratio
+      videoPlayer.style.aspectRatio = '576/1118';
+      videoPlayer.style.width = '100%';
+      videoPlayer.style.height = '100%';
+      videoPlayer.style.objectFit = 'contain';
+
+      // Now load the video
       videoPlayer.load();
+
+      // Additional override after metadata loads (belt and suspenders approach)
+      videoPlayer.addEventListener('loadedmetadata', () => {
+        // Force override again after metadata loads
+        Object.defineProperty(videoPlayer, 'videoWidth', {
+          value: 576,
+          writable: false,
+          configurable: true,
+        });
+        Object.defineProperty(videoPlayer, 'videoHeight', {
+          value: 1118,
+          writable: false,
+          configurable: true,
+        });
+        Object.defineProperty(videoPlayer, 'naturalWidth', {
+          value: 576,
+          writable: false,
+          configurable: true,
+        });
+        Object.defineProperty(videoPlayer, 'naturalHeight', {
+          value: 1118,
+          writable: false,
+          configurable: true,
+        });
+
+        // Force re-render by triggering a resize event
+        window.dispatchEvent(new Event('resize'));
+        console.log('Post-metadata dimension override applied');
+      });
     }
 
     // Initialize tags first before anything else tag-related
@@ -688,6 +757,25 @@
     showTagElements = !showTagElements;
   };
 
+  // Toggle TOK tags visibility
+  const toggleTokTagsVisibility = () => {
+    showTokTags = !showTokTags;
+  };
+
+  // Filter preset tags based on TOK toggle state
+  const getVisiblePresetTags = () => {
+    const tokTags = ['lowTOK', 'semiTOK', 'topTOK'];
+    const regularTags = ['low', 'semitop', 'top'];
+
+    if (showTokTags) {
+      // Show TOK tags and hide regular tags
+      return presetTags.filter((tag) => !regularTags.includes(tag.value));
+    } else {
+      // Show regular tags and hide TOK tags (default behavior)
+      return presetTags.filter((tag) => !tokTags.includes(tag.value));
+    }
+  };
+
   // ZOOM FUNCTIONALITY
 
   // Handle touchstart event to detect pinch gestures
@@ -1002,11 +1090,25 @@
       </div>
     {/if}
 
+    <!-- TOK Tags Toggle Button - bottom right, very transparent -->
+    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+      <div class="z-[1001] fixed right-2 bottom-2">
+        <button
+          type="button"
+          class="bg-black bg-opacity-20 text-white rounded-full p-2 hover:bg-opacity-40 transition-all"
+          title={showTokTags ? 'Switch to Regular Tags' : 'Switch to TOK Tags'}
+          onclick={toggleTokTagsVisibility}
+        >
+          <span class="text-xs font-medium">{showTokTags ? 'REG' : 'TOK'}</span>
+        </button>
+      </div>
+    {/if}
+
     <!-- Preset Tags Quick Access Panel - only show when showTagElements is true -->
     {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && showTagElements}
       <div class="z-[1001] fixed left-2 bottom-[20%]">
         <div class="flex flex-col gap-1">
-          {#each presetTags as presetTag (presetTag.id)}
+          {#each getVisiblePresetTags() as presetTag (presetTag.id)}
             <button
               type="button"
               class={`px-2 py-1 rounded-lg text-white transition-all flex items-center gap-1 ${
@@ -1030,22 +1132,21 @@
       </div>
     {/if}
 
-    <!-- Custom progress bar - shows only when showControls is true and not zoomed -->
+    <!-- Custom progress bar - overlay on video -->
     {#if showControls && !isZoomed}
-      <div class="absolute bottom-4 left-4 right-4 transition-opacity" transition:fade={{ duration: 150 }}>
+      <div class="absolute bottom-6 left-6 right-6 z-[1002] transition-opacity" transition:fade={{ duration: 150 }}>
         <div
-          class="relative h-2 bg-gray-600 rounded cursor-pointer"
+          class="relative h-1 bg-black bg-opacity-50 rounded cursor-pointer mb-2"
           onmousedown={handleProgressBarClick}
           ontouchstart={handleProgressBarClick}
         >
-          <div class="absolute top-0 left-0 h-full bg-immich-primary rounded" style={`width: ${progress}%`}></div>
+          <div class="absolute top-0 left-0 h-full bg-white rounded shadow-sm" style={`width: ${progress}%`}></div>
         </div>
 
-        <!-- Time indicator and play controls -->
-        <div class="flex justify-between items-center text-xs text-white mt-1">
-          <span>{formatTime(currentTime)}</span>
-
-          <span>{formatTime(duration)}</span>
+        <!-- Time indicator -->
+        <div class="flex justify-between items-center text-xs text-white">
+          <span class="bg-black bg-opacity-50 px-2 py-1 rounded">{formatTime(currentTime)}</span>
+          <span class="bg-black bg-opacity-50 px-2 py-1 rounded">{formatTime(duration)}</span>
         </div>
       </div>
     {/if}
