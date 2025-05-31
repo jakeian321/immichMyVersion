@@ -87,11 +87,12 @@
   import { confirmAlbumDelete } from '$lib/utils/album-utils';
   import TagAction from '$lib/components/photos-page/actions/tag-action.svelte';
   import { AssetInteraction } from '$lib/stores/asset-interaction.svelte';
+  import { organizeAlbumByTags } from '$lib/utils/tag-organization';
+  import { mdiAutoFix } from '@mdi/js'; // or any icon you prefer
 
 
 
-
-
+  let isOrganizing = $state(false);
 
 
   //888999888
@@ -382,6 +383,21 @@
     }
   };
 
+  const handleOrganizeByTags = async () => {
+  if (isOrganizing) return;
+  
+  isOrganizing = true;
+  try {
+    await organizeAlbumByTags(album.id);
+    // Refresh the album data after organization
+    await refreshAlbum();
+  } catch (error) {
+    handleError(error, 'Failed to organize album by tags');
+  } finally {
+    isOrganizing = false;
+  }
+};
+
   const handleRemoveAssets = async (assetIds: string[]) => {
     assetStore.removeAssets(assetIds);
     await refreshAlbum();
@@ -623,10 +639,20 @@ $effect(() => {
               />
             {/if}
 
+
             {#if album.assetCount > 0}
-              <CircleIconButton title={$t('slideshow')} onclick={handleStartSlideshow} icon={mdiPresentationPlay} />
-              <CircleIconButton title={$t('download')} onclick={handleDownloadAlbum} icon={mdiFolderDownloadOutline} />
+            <CircleIconButton title={$t('slideshow')} onclick={handleStartSlideshow} icon={mdiPresentationPlay} />
+            <CircleIconButton title={$t('download')} onclick={handleDownloadAlbum} icon={mdiFolderDownloadOutline} />
+            
+            {#if isOwned}
+              <CircleIconButton 
+                title={$t('organize_by_tags')} 
+                onclick={handleOrganizeByTags} 
+                icon={mdiAutoFix}
+                disabled={isOrganizing}
+              />
             {/if}
+          {/if}
 
             {#if isOwned}
               <ButtonContextMenu icon={mdiDotsVertical} title={$t('album_options')}>
