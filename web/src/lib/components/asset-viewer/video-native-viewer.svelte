@@ -1032,10 +1032,7 @@
 
     <!-- Custom progress bar - shows only when showControls is true and not zoomed -->
     {#if showControls && !isZoomed}
-      <div
-        class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-40 px-2 py-1 transition-opacity mx-auto max-w-[80%]"
-        transition:fade={{ duration: 150 }}
-      >
+      <div class="absolute bottom-4 left-4 right-4 transition-opacity" transition:fade={{ duration: 150 }}>
         <div
           class="relative h-2 bg-gray-600 rounded cursor-pointer"
           onmousedown={handleProgressBarClick}
@@ -1047,28 +1044,6 @@
         <!-- Time indicator and play controls -->
         <div class="flex justify-between items-center text-xs text-white mt-1">
           <span>{formatTime(currentTime)}</span>
-
-          <!-- Play/Pause button -->
-          <button
-            class="text-white rounded-full p-1 hover:bg-black hover:bg-opacity-20 transition-all"
-            onclick={(e) => {
-              e.stopPropagation();
-              togglePlayPause();
-            }}
-          >
-            <Icon path={isPlaying ? mdiPause : mdiPlay} size="1.2rem" />
-          </button>
-
-          <!-- Mute/Unmute button -->
-          <button
-            class="text-white rounded-full p-1 hover:bg-black hover:bg-opacity-20 transition-all"
-            onclick={(e) => {
-              e.stopPropagation();
-              toggleMute();
-            }}
-          >
-            <Icon path={videoPlayer?.muted ? mdiVolumeMute : mdiVolumeHigh} size="1.2rem" />
-          </button>
 
           <span>{formatTime(duration)}</span>
         </div>
