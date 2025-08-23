@@ -50,6 +50,7 @@
     mdiPlay,
     mdiPlus,
     mdiSelectAll,
+    mdiViewGrid,
     mdiVolumeHigh,
     mdiVolumeOff,
   } from '@mdi/js';
@@ -68,6 +69,7 @@
   let current = $state<MemoryAsset | undefined>(undefined);
   let isSaved = $derived(current?.memory.isSaved);
   let viewerHeight = $state(0);
+  let currentAssetAlbum = $state<{ id: string; albumName: string } | null>(null);
 
   const { isViewing } = assetViewingStore;
   const viewport: Viewport = $state({ width: 0, height: 0 });
@@ -88,6 +90,26 @@
 
     await goto(asHref(asset));
   };
+
+  // Fetch album information for the current asset
+  const fetchAssetAlbum = async (assetId: string) => {
+    try {
+      // Replace with your actual API call to get the album containing this asset
+      const response = await fetch(`/api/assets/${assetId}`);
+      const album = await response.json();
+      currentAssetAlbum = album;
+    } catch (error) {
+      console.error('Failed to fetch asset album:', error);
+      currentAssetAlbum = null;
+    }
+  };
+
+  // Handle navigation to album
+  const handleViewInAlbum = () => {
+    if (!current) return;
+    goto(`${AppRoute.PHOTOS}/${current.asset.id}`);
+  };
+
   const setProgressDuration = (asset: AssetResponseDto) => {
     if (asset.type === AssetTypeEnum.Video) {
       const timeParts = asset.duration.split(':').map(Number);
@@ -234,6 +256,8 @@
     // Adjust the progress bar duration to the video length
     if (current) {
       setProgressDuration(current.asset);
+      // Fetch album for the current asset
+      handlePromiseError(fetchAssetAlbum(current.asset.id));
     }
     playerInitialized = false;
   };
@@ -479,14 +503,21 @@
                   onclick={() => handleSaveMemory()}
                   class="text-white dark:text-white w-[48px] h-[48px]"
                 />
-                <!-- <IconButton
-                  icon={mdiShareVariantOutline}
-                  shape="round"
-                  variant="ghost"
-                  size="giant"
-                  color="secondary"
-                  aria-label={$t('share')}
-                /> -->
+
+                <!-- Album Navigation Button -->
+                {#if currentAssetAlbum}
+                  <IconButton
+                    icon={mdiViewGrid}
+                    shape="round"
+                    variant="ghost"
+                    color="secondary"
+                    aria-label={$t('view_in_album') || 'View in album'}
+                    onclick={handleViewInAlbum}
+                    class="text-white dark:text-white w-[48px] h-[48px]"
+                    title={`View in "${currentAssetAlbum.albumName}"`}
+                  />
+                {/if}
+
                 <ButtonContextMenu
                   icon={mdiDotsVertical}
                   padding="3"
@@ -503,7 +534,6 @@
                     text={$t('remove_photo_from_memory')}
                     icon={mdiImageMinusOutline}
                   />
-                  <!-- shortcut={{ key: 'l', shift: shared }} -->
                 </ButtonContextMenu>
               </div>
 
