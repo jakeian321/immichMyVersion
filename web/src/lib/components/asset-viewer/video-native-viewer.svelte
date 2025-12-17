@@ -101,7 +101,7 @@
 
   // FIXED: Load preset from localStorage on initialization
   const PRESET_STORAGE_KEY = 'immich_quick_tag_preset';
-  
+
   const loadSavedPreset = (): string[] => {
     try {
       const saved = localStorage.getItem(PRESET_STORAGE_KEY);
@@ -376,13 +376,11 @@
       const skipTime = calculateSkipTime();
       videoPlayer.currentTime = Math.min(videoPlayer.currentTime + skipTime, videoPlayer.duration);
       event.preventDefault();
-    }
-    else if (event.key === 'ArrowLeft') {
+    } else if (event.key === 'ArrowLeft') {
       const skipTime = calculateSkipTime();
       videoPlayer.currentTime = Math.max(videoPlayer.currentTime - skipTime, 0);
       event.preventDefault();
-    }
-    else if (event.key === ' ' || event.key === 'k') {
+    } else if (event.key === ' ' || event.key === 'k') {
       togglePlayPause();
       event.preventDefault();
     }
@@ -424,6 +422,31 @@
     const progressBar = event.currentTarget as HTMLDivElement;
     const rect = progressBar.getBoundingClientRect();
 
+    let clientY: number;
+
+    if ('touches' in event) {
+      clientY = event.touches[0].clientY;
+    } else {
+      clientY = event.clientY;
+    }
+
+    const clickPosition = (clientY - rect.top) / rect.height;
+    videoPlayer.currentTime = clickPosition * videoPlayer.duration;
+    progress = clickPosition * 100;
+
+    event.stopPropagation();
+  };
+
+  const handleSegmentProgressClick = (
+    event: MouseEvent | TouchEvent,
+    segmentIndex: number,
+    segmentDuration: number,
+  ) => {
+    if (!videoPlayer || isZoomed) return;
+
+    const progressBar = event.currentTarget as HTMLDivElement;
+    const rect = progressBar.getBoundingClientRect();
+
     let clientX: number;
 
     if ('touches' in event) {
@@ -433,9 +456,9 @@
     }
 
     const clickPosition = (clientX - rect.left) / rect.width;
-    videoPlayer.currentTime = clickPosition * videoPlayer.duration;
-
-    progress = clickPosition * 100;
+    const segmentStart = segmentIndex * 8;
+    videoPlayer.currentTime = segmentStart + clickPosition * segmentDuration;
+    progress = (videoPlayer.currentTime / videoPlayer.duration) * 100;
 
     event.stopPropagation();
   };
@@ -679,11 +702,11 @@
 
   const saveCurrentTagSelection = () => {
     if (!asset?.tags) return;
-    
+
     const currentSelection = asset.tags
       .filter((tag) => presetTags.some((preset) => preset.value.toLowerCase() === tag.value.toLowerCase()))
       .map((tag) => tag.value);
-    
+
     if (currentSelection.length > 0) {
       savedTagPreset = currentSelection;
       savePresetToStorage(currentSelection);
@@ -704,14 +727,14 @@
       for (const tagValue of savedTagPreset) {
         const tagValueLower = tagValue.toLowerCase();
         const tagId = availableTagsMap[tagValueLower];
-        
+
         if (!tagId) {
           console.warn(`Tag ${tagValue} not found in available tags`);
           continue;
         }
 
         const tagExists = asset.tags.some((tag) => tag.value.toLowerCase() === tagValueLower);
-        
+
         if (!tagExists) {
           console.log(`Adding tag: ${tagValue}`);
           await tagAssets({
@@ -946,8 +969,9 @@
       <FaceEditor htmlElement={videoPlayer} {containerWidth} {containerHeight} {assetId} />
     {/if}
 
+    <!-- Quick Tag Preset Button -->
     {#if !isZoomed && isOwner && asset?.id && !isSharedLink()}
-      <div class="z-[1001] fixed left-0 bottom-[83%]">
+      <div class="z-[1001] fixed left-0 top-[8%]">
         <button
           class={`text-white rounded-full px-3 py-2 transition-all ${
             savedTagPreset.length > 0 ? 'bg-immich-primary' : 'bg-black bg-opacity-60'
@@ -964,18 +988,33 @@
       </div>
     {/if}
 
+    <!-- Auto-skip Button -->
     {#if !isZoomed}
-      <div class="z-[1001] fixed left-14 bottom-[88%]">
+      <div class="z-[1001] fixed left-12 top-[8%]">
         <button
-          class={`bg-black bg-opacity-60 text-white rounded-full p-3 transition-all ${isAutoSkip ? 'bg-immich-primary' : 'bg-black bg-opacity-60'}`}
+          class={`bg-black bg-opacity-40 text-white rounded-full p-2 transition-all ${isAutoSkip ? 'bg-immich-primary bg-opacity-60' : ''}`}
           onclick={toggleAutoSkip}
         >
-          <span class="font-bold">A</span>
-          {isAutoSkip ? '4x' : ''}
+          <span class="font-bold text-xs">A{isAutoSkip ? '4x' : ''}</span>
         </button>
       </div>
     {/if}
 
+    <!-- View Tags Button (V) -->
+    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && tags.length > 0}
+      <div class="z-[1001] fixed left-12 top-[12%]">
+        <button
+          type="button"
+          class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
+          title="Toggle Tags"
+          onclick={toggleTagsPanel}
+        >
+          <span class="font-bold text-xs">V</span>
+        </button>
+      </div>
+    {/if}
+
+    <!-- Zoom Reset Button -->
     {#if isZoomed && showZoomControls}
       <div class="z-[1001] fixed right-4 bottom-4" transition:fade={{ duration: 150 }}>
         <button
@@ -996,43 +1035,70 @@
       </div>
     {/if}
 
+    <!-- Eye Icon - Toggle Tag Elements -->
     {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
-      <div class="z-[1001] fixed left-0 bottom-[88%]">
+      <div class="z-[1001] fixed left-0 top-[12%]">
         <button
           type="button"
           class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
           title={showTagElements ? 'Hide Tags' : 'Show Tags'}
           onclick={toggleTagElementsVisibility}
         >
-          <Icon path={showTagElements ? mdiEyeOff : mdiEye} size="1.2rem" />
+          <Icon path={showTagElements ? mdiEyeOff : mdiEye} size="1.1rem" />
         </button>
       </div>
     {/if}
 
+    <!-- Plus Icon - Add Tag -->
     {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
-      <div class="z-[1001] fixed left-0 bottom-[78%]">
-        <div class="flex flex-col">
-          <button
-            type="button"
-            class="bg-immich-primary text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1 hover:bg-immich-primary/80 transition-all"
-            title="Add tag"
-            onclick={handleAddTag}
+      <div class="z-[1001] fixed left-0 top-[16%]">
+        <button
+          type="button"
+          class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
+          title="Add tag"
+          onclick={handleAddTag}
+        >
+          <Icon path={mdiPlus} size="1.1rem" />
+        </button>
+      </div>
+    {/if}
+
+    <!-- Horizontal Progress Bars -->
+    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+      {@const numBars = Math.ceil(duration / 8)}
+      {@const barWidth = '2in'}
+
+      <div class="z-[1001] fixed left-0 top-[21%] flex flex-col gap-5">
+        {#each Array(numBars) as _, index}
+          {@const segmentStart = index * 8}
+          {@const segmentEnd = Math.min((index + 1) * 8, duration)}
+          {@const segmentDuration = segmentEnd - segmentStart}
+          {@const segmentProgress = Math.max(0, Math.min(100, ((currentTime - segmentStart) / segmentDuration) * 100))}
+          {@const isTopBar = index % 2 === 0}
+
+          <div
+            class="relative cursor-pointer select-none outline-none focus:outline-none active:outline-none"
+            style="width: {barWidth}; height: 8px; -webkit-tap-highlight-color: transparent;"
+            onmousedown={(e) => handleSegmentProgressClick(e, index, segmentDuration)}
+            ontouchstart={(e) => handleSegmentProgressClick(e, index, segmentDuration)}
           >
-            <Icon path={mdiPlus} size="0.75rem" />
-            <span class="text-xs">Add Tag</span>
-          </button>
+            <div class="absolute inset-0">
+              <div class="w-full h-full bg-white bg-opacity-5 rounded-full">
+                <div
+                  class="h-full bg-white bg-opacity-20 rounded-full transition-[width]"
+                  style={`width: ${currentTime >= segmentStart && currentTime <= segmentEnd ? segmentProgress : currentTime > segmentEnd ? 100 : 0}%`}
+                ></div>
+              </div>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
 
-          {#if tags.length > 0}
-            <button
-              type="button"
-              class="bg-black bg-opacity-40 text-white rounded-full px-3 py-1 mb-2 flex items-center gap-1"
-              title="Toggle Tags"
-              onclick={toggleTagsPanel}
-            >
-              <span class="text-xs">View Tags {showTagsPanel ? '▲' : '▼'}</span>
-            </button>
-          {/if}
-
+    <!-- View Tags Panel -->
+    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+      <div class="z-[1001] fixed left-0 top-[22%]">
+        <div class="flex flex-col">
           {#if showTagsPanel && tags.length > 0}
             <div class="bg-black bg-opacity-40 rounded p-2 max-w-[200px]">
               <div class="flex flex-wrap gap-1">
@@ -1064,21 +1130,23 @@
       </div>
     {/if}
 
+    <!-- TOK/REG Toggle Button -->
     {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
       <div class="z-[1001] fixed right-2 bottom-2">
         <button
           type="button"
-          class="bg-black bg-opacity-20 text-white rounded-full p-2 hover:bg-opacity-40 transition-all"
+          class="bg-black bg-opacity-40 text-white rounded-full px-2 py-1 hover:bg-opacity-60 transition-all"
           title={showTokTags ? 'Switch to Regular Tags' : 'Switch to TOK Tags'}
           onclick={toggleTokTagsVisibility}
         >
-          <span class="text-xs font-medium">{showTokTags ? 'REG' : 'TOK'}</span>
+          <span class="text-[10px] font-medium">{showTokTags ? 'REG' : 'TOK'}</span>
         </button>
       </div>
     {/if}
 
+    <!-- Preset Tag Buttons -->
     {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && showTagElements}
-      <div class="z-[1001] fixed left-2 bottom-[20%]">
+      <div class="z-[1001] fixed left-16 bottom-[20%]">
         <div class="flex flex-col gap-1">
           {#each getVisiblePresetTags() as presetTag (presetTag.id)}
             <button
@@ -1103,45 +1171,23 @@
         </div>
       </div>
     {/if}
-
-    {#if showControls && !isZoomed}
-      <div class="absolute bottom-6 left-6 right-6 z-[1002] transition-opacity" transition:fade={{ duration: 150 }}>
-        <div
-          class="relative h-8 flex items-center cursor-pointer mb-2"
-          onmousedown={handleProgressBarClick}
-          ontouchstart={handleProgressBarClick}
-        >
-          <div class="absolute inset-0 flex items-center">
-            <div class="w-full h-2 bg-black bg-opacity-50 rounded">
-              <div class="h-full bg-white rounded shadow-sm transition-all" style={`width: ${progress}%`}></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="flex justify-between items-center text-xs text-white">
-          <span class="bg-black bg-opacity-50 px-2 py-1 rounded">{formatTime(currentTime)}</span>
-          <span class="bg-black bg-opacity-50 px-2 py-1 rounded">{formatTime(duration)}</span>
-        </div>
-      </div>
-    {/if}
   </div>
 </div>
 
+<!-- Preset Configuration Modal -->
 {#if showPresetConfig}
   <Portal>
     <div class="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-75">
       <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
         <h3 class="text-white text-lg font-semibold mb-4">Configure Quick Tag Preset</h3>
         <p class="text-gray-300 text-sm mb-4">Select tags to apply with a quick tap:</p>
-        
+
         <div class="flex flex-wrap gap-2 mb-6 max-h-96 overflow-y-auto">
           {#each presetTags as presetTag (presetTag.id)}
             <button
               type="button"
               class={`px-3 py-2 rounded-lg text-white transition-all ${
-                tempPresetSelection.includes(presetTag.value)
-                  ? 'bg-immich-primary'
-                  : 'bg-gray-700 hover:bg-gray-600'
+                tempPresetSelection.includes(presetTag.value) ? 'bg-immich-primary' : 'bg-gray-700 hover:bg-gray-600'
               }`}
               onclick={() => togglePresetTagSelection(presetTag.value)}
             >
@@ -1171,6 +1217,7 @@
   </Portal>
 {/if}
 
+<!-- Tag Form Modal -->
 {#if isTagFormOpen}
   <Portal>
     <TagAssetForm onTag={(tagsIds) => handleTag(tagsIds)} onCancel={handleCancelTag} />

@@ -1,0 +1,16 @@
+IMMICH, Edit the frontend code here :  
+
+Edit with vscode this 
+Directory: /Users/random/immich-dev/web
+sudo -s
+
+
+random@Tanvirs-MBP web % npm run build  
+
+sudo cp -R ./build/. /opt/services/immich/app/www/
+
+
+sudo launchctl bootout system /Library/LaunchDaemons/com.immich.plist
+
+
+sudo launchctl bootstrap system /Library/LaunchDaemons/com.immich.plist
