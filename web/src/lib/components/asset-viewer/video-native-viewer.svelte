@@ -1035,144 +1035,142 @@
       </div>
     {/if}
 
-    <!-- Eye Icon - Toggle Tag Elements -->
-    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
-      <div class="z-[1001] fixed left-0 top-[12%]">
-        <button
-          type="button"
-          class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
-          title={showTagElements ? 'Hide Tags' : 'Show Tags'}
-          onclick={toggleTagElementsVisibility}
-        >
-          <Icon path={showTagElements ? mdiEyeOff : mdiEye} size="1.1rem" />
-        </button>
-      </div>
-    {/if}
-
-    <!-- Plus Icon - Add Tag -->
-    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
-      <div class="z-[1001] fixed left-0 top-[16%]">
-        <button
-          type="button"
-          class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
-          title="Add tag"
-          onclick={handleAddTag}
-        >
-          <Icon path={mdiPlus} size="1.1rem" />
-        </button>
-      </div>
-    {/if}
-
-    <!-- Horizontal Progress Bars -->
-    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
-      {@const numBars = Math.ceil(duration / 8)}
-      {@const barWidth = '2in'}
-
-      <div class="z-[1001] fixed left-0 top-[21%] flex flex-col gap-5">
-        {#each Array(numBars) as _, index}
-          {@const segmentStart = index * 8}
-          {@const segmentEnd = Math.min((index + 1) * 8, duration)}
-          {@const segmentDuration = segmentEnd - segmentStart}
-          {@const segmentProgress = Math.max(0, Math.min(100, ((currentTime - segmentStart) / segmentDuration) * 100))}
-          {@const isTopBar = index % 2 === 0}
-
-          <div
-            class="relative cursor-pointer select-none outline-none focus:outline-none active:outline-none"
-            style="width: {barWidth}; height: 8px; -webkit-tap-highlight-color: transparent;"
-            onmousedown={(e) => handleSegmentProgressClick(e, index, segmentDuration)}
-            ontouchstart={(e) => handleSegmentProgressClick(e, index, segmentDuration)}
-          >
-            <div class="absolute inset-0">
-              <div class="w-full h-full bg-white bg-opacity-5 rounded-full">
-                <div
-                  class="h-full bg-white bg-opacity-20 rounded-full transition-[width]"
-                  style={`width: ${currentTime >= segmentStart && currentTime <= segmentEnd ? segmentProgress : currentTime > segmentEnd ? 100 : 0}%`}
-                ></div>
-              </div>
-            </div>
-          </div>
-        {/each}
-      </div>
-    {/if}
-
-    <!-- View Tags Panel -->
-    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
-      <div class="z-[1001] fixed left-0 top-[22%]">
-        <div class="flex flex-col">
-          {#if showTagsPanel && tags.length > 0}
-            <div class="bg-black bg-opacity-40 rounded p-2 max-w-[200px]">
-              <div class="flex flex-wrap gap-1">
-                {#each tags as tag (tag.id)}
-                  <div class="flex group transition-all">
-                    <a
-                      class="inline-block h-min whitespace-nowrap pl-2 pr-1 py-0.5 text-center align-baseline leading-none text-gray-100 bg-immich-primary rounded-tl-full rounded-bl-full hover:bg-immich-primary/80 transition-all"
-                      href={encodeURI(`${AppRoute.TAGS}/?path=${tag.value}`)}
-                    >
-                      <p class="text-xs">
-                        {tag.value}
-                      </p>
-                    </a>
-
-                    <button
-                      type="button"
-                      class="text-gray-100 bg-immich-primary/95 rounded-tr-full rounded-br-full place-items-center place-content-center pr-1 pl-0.5 py-0.5 hover:bg-immich-primary/80 transition-all"
-                      title="Remove tag"
-                      onclick={() => handleRemoveTag(tag.id)}
-                    >
-                      <Icon path={mdiClose} size="0.75rem" />
-                    </button>
-                  </div>
-                {/each}
-              </div>
-            </div>
-          {/if}
-        </div>
-      </div>
-    {/if}
-
-    <!-- TOK/REG Toggle Button -->
-    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
-      <div class="z-[1001] fixed right-2 bottom-2">
-        <button
-          type="button"
-          class="bg-black bg-opacity-40 text-white rounded-full px-2 py-1 hover:bg-opacity-60 transition-all"
-          title={showTokTags ? 'Switch to Regular Tags' : 'Switch to TOK Tags'}
-          onclick={toggleTokTagsVisibility}
-        >
-          <span class="text-[10px] font-medium">{showTokTags ? 'REG' : 'TOK'}</span>
-        </button>
-      </div>
-    {/if}
-
-    <!-- Preset Tag Buttons -->
-    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && showTagElements}
-      <div class="z-[1001] fixed left-16 bottom-[20%]">
-        <div class="flex flex-col gap-1">
-          {#each getVisiblePresetTags() as presetTag (presetTag.id)}
-            <button
-              type="button"
-              class={`px-2 py-1 rounded-lg text-white transition-all flex items-center gap-1 ${
-                checkTagSelected(presetTag.value)
-                  ? 'bg-immich-primary'
-                  : 'bg-black bg-opacity-40 hover:bg-immich-primary/50'
-              }`}
-              onclick={(event) => handleTagButtonClick(event, presetTag.value)}
-              disabled={checkTagProcessing(presetTag.value)}
-            >
-              <Icon path={mdiTag} size="0.6rem" />
-              <span class="text-xs font-medium">{presetTag.value}</span>
-              {#if checkTagProcessing(presetTag.value)}
-                <span class="ml-1 inline-block h-3 w-3">
-                  <LoadingSpinner size="xs" />
-                </span>
-              {/if}
-            </button>
-          {/each}
-        </div>
-      </div>
-    {/if}
+<!-- Eye Icon (now uses tag functionality) - Toggle Tag Elements -->
+{#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+  <div class="z-[1001] fixed left-0 top-[12%]">
+    <button
+      type="button"
+      class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
+      title={showTagElements ? 'Hide Tags' : 'Show Tags'}
+      onclick={toggleTagElementsVisibility}
+    >
+      <Icon path={showTagElements ? mdiEyeOff : mdiEye} size="1.1rem" />
+    </button>
   </div>
-</div>
+{/if}
+
+<!-- Tag Icon (now uses eye/view functionality) - View Tags -->
+{#if isOwner && asset?.id && !isSharedLink() && !isZoomed && tags.length > 0}
+  <div class="z-[1001] fixed left-12 top-[12%]">
+    <button
+      type="button"
+      class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
+      title="Toggle Tags Panel"
+      onclick={toggleTagsPanel}
+    >
+      <Icon path={mdiTag} size="1.1rem" />
+    </button>
+  </div>
+{/if}
+
+<!-- Horizontal Progress Bars (increased width and gap) -->
+{#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+  {@const numBars = Math.ceil(duration / 8)}
+  {@const barWidth = '2.5in'}
+
+  <div class="z-[1001] fixed left-0 top-[21%] flex flex-col gap-8">
+    {#each Array(numBars) as _, index}
+      {@const segmentStart = index * 8}
+      {@const segmentEnd = Math.min((index + 1) * 8, duration)}
+      {@const segmentDuration = segmentEnd - segmentStart}
+      {@const segmentProgress = Math.max(0, Math.min(100, ((currentTime - segmentStart) / segmentDuration) * 100))}
+      {@const isTopBar = index % 2 === 0}
+
+      <div
+        class="relative cursor-pointer select-none outline-none focus:outline-none active:outline-none"
+        style="width: {barWidth}; height: 10px; -webkit-tap-highlight-color: transparent;"
+        onmousedown={(e) => handleSegmentProgressClick(e, index, segmentDuration)}
+        ontouchstart={(e) => handleSegmentProgressClick(e, index, segmentDuration)}
+      >
+        <div class="absolute inset-0">
+          <div class="w-full h-full bg-white bg-opacity-5 rounded-full">
+            <div
+              class="h-full bg-white bg-opacity-20 rounded-full transition-[width]"
+              style={`width: ${currentTime >= segmentStart && currentTime <= segmentEnd ? segmentProgress : currentTime > segmentEnd ? 100 : 0}%`}
+            ></div>
+          </div>
+        </div>
+      </div>
+    {/each}
+  </div>
+{/if}
+
+<!-- Preset Tag Buttons (moved closer to left edge) -->
+{#if isOwner && asset?.id && !isSharedLink() && !isZoomed && showTagElements}
+  <div class="z-[1001] fixed left-2 bottom-[20%]">
+    <div class="flex flex-col gap-1">
+      {#each getVisiblePresetTags() as presetTag (presetTag.id)}
+        <button
+          type="button"
+          class={`px-2 py-1 rounded-lg text-white transition-all flex items-center gap-1 ${
+            checkTagSelected(presetTag.value)
+              ? 'bg-immich-primary'
+              : 'bg-black bg-opacity-40 hover:bg-immich-primary/50'
+          }`}
+          onclick={(event) => handleTagButtonClick(event, presetTag.value)}
+          disabled={checkTagProcessing(presetTag.value)}
+        >
+          <Icon path={mdiTag} size="0.6rem" />
+          <span class="text-xs font-medium">{presetTag.value}</span>
+          {#if checkTagProcessing(presetTag.value)}
+            <span class="ml-1 inline-block h-3 w-3">
+              <LoadingSpinner size="xs" />
+            </span>
+          {/if}
+        </button>
+      {/each}
+    </div>
+  </div>
+{/if}
+
+<!-- View Tags Panel -->
+{#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+  <div class="z-[1001] fixed left-0 top-[22%]">
+    <div class="flex flex-col">
+      {#if showTagsPanel && tags.length > 0}
+        <div class="bg-black bg-opacity-40 rounded p-2 max-w-[200px]">
+          <div class="flex flex-wrap gap-1">
+            {#each tags as tag (tag.id)}
+              <div class="flex group transition-all">
+                <a
+                  class="inline-block h-min whitespace-nowrap pl-2 pr-1 py-0.5 text-center align-baseline leading-none text-gray-100 bg-immich-primary rounded-tl-full rounded-bl-full hover:bg-immich-primary/80 transition-all"
+                  href={encodeURI(`${AppRoute.TAGS}/?path=${tag.value}`)}
+                >
+                  <p class="text-xs">
+                    {tag.value}
+                  </p>
+                </a>
+
+                <button
+                  type="button"
+                  class="text-gray-100 bg-immich-primary/95 rounded-tr-full rounded-br-full place-items-center place-content-center pr-1 pl-0.5 py-0.5 hover:bg-immich-primary/80 transition-all"
+                  title="Remove tag"
+                  onclick={() => handleRemoveTag(tag.id)}
+                >
+                  <Icon path={mdiClose} size="0.75rem" />
+                </button>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
+
+<!-- TOK/REG Toggle Button -->
+{#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+  <div class="z-[1001] fixed right-2 bottom-2">
+    <button
+      type="button"
+      class="bg-black bg-opacity-40 text-white rounded-full px-2 py-1 hover:bg-opacity-60 transition-all"
+      title={showTokTags ? 'Switch to Regular Tags' : 'Switch to TOK Tags'}
+      onclick={toggleTokTagsVisibility}
+    >
+      <span class="text-[10px] font-medium">{showTokTags ? 'REG' : 'TOK'}</span>
+    </button>
+  </div>
+{/if}
 
 <!-- Preset Configuration Modal -->
 {#if showPresetConfig}
@@ -1223,3 +1221,5 @@
     <TagAssetForm onTag={(tagsIds) => handleTag(tagsIds)} onCancel={handleCancelTag} />
   </Portal>
 {/if}
+  </div>
+</div>
