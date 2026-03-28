@@ -9,7 +9,7 @@ import type { PageLoad } from './$types';
 export const load = (async () => {
   await authenticate();
   if (!get(user).shouldChangePassword) {
-    redirect(302, AppRoute.PHOTOS);
+    redirect(302, AppRoute.ALBUMS);
   }
 
   const $t = await getFormatter();

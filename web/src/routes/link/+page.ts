@@ -14,7 +14,7 @@ export const load = (({ url }) => {
   const target = queryParams.get('target') as LinkTarget;
   switch (target) {
     case LinkTarget.HOME: {
-      return redirect(302, AppRoute.PHOTOS);
+      return redirect(302, AppRoute.ALBUMS);
     }
 
     case LinkTarget.UNSUBSCRIBE: {
@@ -49,5 +49,5 @@ export const load = (({ url }) => {
     }
   }
 
-  return redirect(302, AppRoute.PHOTOS);
+  return redirect(302, AppRoute.ALBUMS);
 }) satisfies PageLoad;

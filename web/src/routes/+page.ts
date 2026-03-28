@@ -16,7 +16,7 @@ export const load = (async ({ fetch }) => {
     await init(fetch);
     const authenticated = await loadUser();
     if (authenticated) {
-      redirect(302, AppRoute.PHOTOS);
+      redirect(302, AppRoute.ALBUMS);
     }
 
     const { isInitialized } = get(serverConfig);
