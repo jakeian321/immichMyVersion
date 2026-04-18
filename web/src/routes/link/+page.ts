@@ -11,7 +11,7 @@ enum LinkTarget {
 
 export const load = (({ url }) => {
   const queryParams = url.searchParams;
-  const target = queryParams.get('target') as LinkTarget;
+  const target = queryParams.get('git statustarget') as LinkTarget;
   switch (target) {
     case LinkTarget.HOME: {
       return redirect(302, AppRoute.ALBUMS);
