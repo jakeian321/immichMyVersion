@@ -257,7 +257,7 @@
       videoPlayer.style.aspectRatio = '576/1118';
       videoPlayer.style.width = '100%';
       videoPlayer.style.height = '100%';
-      videoPlayer.style.objectFit = 'contain';
+      videoPlayer.style.objectFit = 'cover';
 
       videoPlayer.load();
 
@@ -922,7 +922,7 @@
       autoplay
       playsinline
       webkit-playsinline="true"
-      class="h-full w-full object-contain max-h-screen transition-transform duration-100"
+      class="h-full w-full object-cover max-h-screen transition-transform duration-100"
       style={`transform: ${getTransformStyle()}`}
       use:swipe={() => ({})}
       onswipe={onSwipe}
