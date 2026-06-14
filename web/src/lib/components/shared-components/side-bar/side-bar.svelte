@@ -20,6 +20,7 @@
     mdiToolbox,
     mdiToolboxOutline,
     mdiFolderOutline,
+    mdiSetMerge,
     mdiTagMultipleOutline,
     mdiLink,
   } from '@mdi/js';
@@ -106,6 +107,8 @@
         </span>
       {/snippet}
     </SideBarLink>
+
+    <SideBarLink title={$t('combine')} routeId="/(user)/combine" icon={mdiSetMerge} flippedLogo />
 
     {#if $preferences.tags.enabled && $preferences.tags.sidebarWeb}
       <SideBarLink title={$t('tags')} routeId="/(user)/tags" icon={mdiTagMultipleOutline} flippedLogo />
