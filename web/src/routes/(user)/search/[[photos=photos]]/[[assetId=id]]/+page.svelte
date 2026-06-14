@@ -24,6 +24,7 @@
   import {
     type AlbumResponseDto,
     type AssetResponseDto,
+    getAllAlbums,
     getPerson,
     getTagById,
     type MetadataSearchDto,
@@ -136,7 +137,24 @@
     nextPage = 1;
     searchResultAssets = [];
     searchResultAlbums = [];
-    await loadNextPage(true);
+    await Promise.all([loadNextPage(true), loadAlbumsByDescription()]);
+  }
+
+  // The metadata `description` search only matches the asset's own EXIF description,
+  // so separately search album descriptions and surface matching albums here.
+  async function loadAlbumsByDescription() {
+    const description = 'description' in terms ? terms.description?.trim() : undefined;
+    if (!description) {
+      return;
+    }
+
+    try {
+      const albums = await getAllAlbums({});
+      const query = description.toLowerCase();
+      searchResultAlbums = albums.filter((album) => album.description.toLowerCase().includes(query));
+    } catch (error) {
+      handleError(error, $t('loading_search_results_failed'));
+    }
   }
 
   // eslint-disable-next-line svelte/valid-prop-names-in-kit-pages
