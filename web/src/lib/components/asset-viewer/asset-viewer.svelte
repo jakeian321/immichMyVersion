@@ -558,6 +558,14 @@
             />
           </div>
         {/if}
+
+        {#if $slideshowState === SlideshowState.None && !isShowEditor}
+          <div class="z-[1000] absolute bottom-0 left-0 right-0 p-4 pb-10 pointer-events-none sm:pb-12">
+            <p class="text-white-shadow break-words text-sm font-medium sm:text-base">
+              {asset.originalFileName}
+            </p>
+          </div>
+        {/if}
       {/key}
     {/if}
   </div>
