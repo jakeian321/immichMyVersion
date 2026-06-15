@@ -1172,16 +1172,16 @@
       </div>
     {/if}
 
-    <!-- Tag Icon (now uses eye/view functionality) - View Tags -->
-    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && tags.length > 0}
-      <div class="z-[1001] fixed left-12 top-[12%]">
+    <!-- Add Tag Button -->
+    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+      <div class="z-[1001] fixed left-12 top-[18%]">
         <button
           type="button"
           class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
-          title="Toggle Tags Panel"
-          onclick={toggleTagsPanel}
+          title="Add tag"
+          onclick={handleAddTag}
         >
-          <Icon path={mdiTag} size="1.1rem" />
+          <Icon path={mdiPlus} size="1.1rem" />
         </button>
       </div>
     {/if}
