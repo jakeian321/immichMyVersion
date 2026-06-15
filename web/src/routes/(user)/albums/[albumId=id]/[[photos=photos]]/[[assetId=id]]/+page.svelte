@@ -28,19 +28,22 @@
   import MenuOption from '$lib/components/shared-components/context-menu/menu-option.svelte';
   import ControlAppBar from '$lib/components/shared-components/control-app-bar.svelte';
   import CreateSharedLinkModal from '$lib/components/shared-components/create-share-link-modal/create-shared-link-modal.svelte';
+  import GalleryViewer from '$lib/components/shared-components/gallery-viewer/gallery-viewer.svelte';
   import {
     NotificationType,
     notificationController,
   } from '$lib/components/shared-components/notification/notification';
+  import LoadingSpinner from '$lib/components/shared-components/loading-spinner.svelte';
   import UserAvatar from '$lib/components/shared-components/user-avatar.svelte';
   import { AppRoute, AlbumPageViewMode } from '$lib/constants';
   import { numberOfComments, setNumberOfComments, updateNumberOfComments } from '$lib/stores/activity.store';
   import { assetViewingStore } from '$lib/stores/asset-viewing.store';
-  import { AssetStore } from '$lib/stores/assets-store.svelte';
+  import { AssetStore, type Viewport } from '$lib/stores/assets-store.svelte';
   import { SlideshowNavigation, SlideshowState, slideshowStore } from '$lib/stores/slideshow.store';
   import { preferences, user } from '$lib/stores/user.store';
   import { handlePromiseError } from '$lib/utils';
   import { downloadAlbum, cancelMultiselect } from '$lib/utils/asset-utils';
+  import { timeToSeconds } from '$lib/utils/date-time';
   import { openFileUploadDialog } from '$lib/utils/file-uploader';
   import { handleError } from '$lib/utils/handle-error';
   import {
@@ -66,9 +69,11 @@
     updateAlbumInfo,
     type ActivityResponseDto,
     type AlbumUserAddDto,
+    type AssetResponseDto,
   } from '@immich/sdk';
   import {
     mdiArrowLeft,
+    mdiClose,
     mdiCogOutline,
     mdiDeleteOutline,
     mdiDotsVertical,
@@ -79,6 +84,7 @@
     mdiPlus,
     mdiPresentationPlay,
     mdiShareVariantOutline,
+    mdiSortClockDescendingOutline,
   } from '@mdi/js';
   import { fly } from 'svelte/transition';
   import type { PageData } from './$types';
@@ -90,10 +96,7 @@
   import { organizeAlbumByTags } from '$lib/utils/tag-organization';
   import { mdiAutoFix } from '@mdi/js'; // or any icon you prefer
 
-
-
   let isOrganizing = $state(false);
-
 
   //888999888
   // Add these imports along with your existing imports
@@ -101,28 +104,10 @@
   import { SvelteSet } from 'svelte/reactivity';
   import FilterBar from '$lib/components/shared-components/filter-bar.svelte'; // You may need
 
-    // Add these variables to your state declarations
-    let selectedTags = $state(new SvelteSet<string>());
-    let isStarred = $state(false);
-    // Add other filter states as needed
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  // Add these variables to your state declarations
+  let selectedTags = $state(new SvelteSet<string>());
+  let isStarred = $state(false);
+  // Add other filter states as needed
 
   interface Props {
     data: PageData;
@@ -143,8 +128,16 @@
   let reactions: ActivityResponseDto[] = $state([]);
   let albumOrder: AssetOrder | undefined = $state(data.album.order);
 
+  let showDurationSort = $state(false);
+  let isLoadingDurationSort = $state(false);
+  let durationSortedAssets: AssetResponseDto[] = $state([]);
+  // height is set arbitrarily large so GalleryViewer renders every asset instead of
+  // virtualizing based on window scroll position, which doesn't track this view's scroll container
+  const durationSortViewport: Viewport = $state({ width: 0, height: 100_000 });
+
   const assetInteraction = new AssetInteraction();
   const timelineInteraction = new AssetInteraction();
+  const durationSortInteraction = new AssetInteraction();
 
   afterNavigate(({ from }) => {
     let url: string | undefined = from?.url?.pathname;
@@ -365,6 +358,30 @@
     await downloadAlbum(album);
   };
 
+  const toggleDurationSort = async () => {
+    if (showDurationSort) {
+      showDurationSort = false;
+      cancelMultiselect(durationSortInteraction);
+      return;
+    }
+
+    showDurationSort = true;
+    isLoadingDurationSort = true;
+    durationSortedAssets = [];
+
+    try {
+      const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
+      durationSortedAssets = fullAlbum.assets
+        .slice()
+        .sort((a, b) => timeToSeconds(b.duration) - timeToSeconds(a.duration));
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_load_album'));
+      showDurationSort = false;
+    } finally {
+      isLoadingDurationSort = false;
+    }
+  };
+
   const handleRemoveAlbum = async () => {
     const isConfirmed = await confirmAlbumDelete(album);
 
@@ -384,19 +401,19 @@
   };
 
   const handleOrganizeByTags = async () => {
-  if (isOrganizing) return;
-  
-  isOrganizing = true;
-  try {
-    await organizeAlbumByTags(album.id);
-    // Refresh the album data after organization
-    await refreshAlbum();
-  } catch (error) {
-    handleError(error, 'Failed to organize album by tags');
-  } finally {
-    isOrganizing = false;
-  }
-};
+    if (isOrganizing) return;
+
+    isOrganizing = true;
+    try {
+      await organizeAlbumByTags(album.id);
+      // Refresh the album data after organization
+      await refreshAlbum();
+    } catch (error) {
+      handleError(error, 'Failed to organize album by tags');
+    } finally {
+      isOrganizing = false;
+    }
+  };
 
   const handleRemoveAssets = async (assetIds: string[]) => {
     assetStore.removeAssets(assetIds);
@@ -456,20 +473,6 @@
 
   let assetStore = new AssetStore();
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   //commented this original out 888999888
 
   // $effect(() => {
@@ -480,46 +483,29 @@
   //   }
   // });
 
+  //added this 888999888
+  $effect(() => {
+    if (viewMode === AlbumPageViewMode.VIEW) {
+      // Convert Set to Array consistently
+      const tagIdsArray = selectedTags.size > 0 ? Array.from(selectedTags) : undefined;
+      console.log('Selected tags updated in album page:', tagIdsArray);
 
-//added this 888999888
-$effect(() => {
-  if (viewMode === AlbumPageViewMode.VIEW) {
-    // Convert Set to Array consistently
-    const tagIdsArray = selectedTags.size > 0 ? Array.from(selectedTags) : undefined;
-    console.log("Selected tags updated in album page:", tagIdsArray);
+      console.log('Updating asset store with filters:', {
+        albumId,
+        tagIds: tagIdsArray,
+        isFavorite: isStarred,
+      });
 
-    console.log("Updating asset store with filters:", {
-      albumId,
-      tagIds: tagIdsArray,
-      isFavorite: isStarred
-    });
-    
-      void assetStore.updateOptions({ 
-      albumId, 
-      order: albumOrder,
-      tagIds: tagIdsArray,
-      isFavorite: isStarred
-    });
-  } else if (viewMode === AlbumPageViewMode.SELECT_ASSETS) {
-    void assetStore.updateOptions({ isArchived: false, withPartners: true, timelineAlbumId: albumId });
-  }
-});
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+      void assetStore.updateOptions({
+        albumId,
+        order: albumOrder,
+        tagIds: tagIdsArray,
+        isFavorite: isStarred,
+      });
+    } else if (viewMode === AlbumPageViewMode.SELECT_ASSETS) {
+      void assetStore.updateOptions({ isArchived: false, withPartners: true, timelineAlbumId: albumId });
+    }
+  });
 
   onDestroy(() => assetStore.destroy());
   // let timelineStore = new AssetStore();
@@ -639,20 +625,25 @@ $effect(() => {
               />
             {/if}
 
-
             {#if album.assetCount > 0}
-            <CircleIconButton title={$t('slideshow')} onclick={handleStartSlideshow} icon={mdiPresentationPlay} />
-            <CircleIconButton title={$t('download')} onclick={handleDownloadAlbum} icon={mdiFolderDownloadOutline} />
-            
-            {#if isOwned}
-              <CircleIconButton 
-                title={$t('organize_by_tags')} 
-                onclick={handleOrganizeByTags} 
-                icon={mdiAutoFix}
-                disabled={isOrganizing}
+              <CircleIconButton title={$t('slideshow')} onclick={handleStartSlideshow} icon={mdiPresentationPlay} />
+              <CircleIconButton title={$t('download')} onclick={handleDownloadAlbum} icon={mdiFolderDownloadOutline} />
+              <CircleIconButton
+                title={showDurationSort ? $t('close') : $t('sort_by_duration')}
+                onclick={toggleDurationSort}
+                icon={showDurationSort ? mdiClose : mdiSortClockDescendingOutline}
+                color={showDurationSort ? 'primary' : undefined}
               />
+
+              {#if isOwned}
+                <CircleIconButton
+                  title={$t('organize_by_tags')}
+                  onclick={handleOrganizeByTags}
+                  icon={mdiAutoFix}
+                  disabled={isOrganizing}
+                />
+              {/if}
             {/if}
-          {/if}
 
             {#if isOwned}
               <ButtonContextMenu icon={mdiDotsVertical} title={$t('album_options')}>
@@ -726,113 +717,128 @@ $effect(() => {
     <main
       class="relative h-dvh overflow-hidden bg-immich-bg px-6 max-md:pt-[var(--navbar-height-md)] pt-[var(--navbar-height)] dark:bg-immich-dark-bg"
     >
-      <AssetGrid
-        enableRouting={viewMode === AlbumPageViewMode.SELECT_ASSETS ? false : true}
-        {album}
-        {assetStore}
-        assetInteraction={currentAssetIntersection}
-        {isShared}
-        {isSelectionMode}
-        {singleSelect}
-        {showArchiveIcon}
-        {onSelect}
-        onEscape={handleEscape}
-      >
-        {#if viewMode !== AlbumPageViewMode.SELECT_ASSETS}
-          {#if viewMode !== AlbumPageViewMode.SELECT_THUMBNAIL}
-            <!-- ALBUM TITLE -->
-            <section class="pt-8 md:pt-24">
-              <AlbumTitle
-                id={album.id}
-                albumName={album.albumName}
-                {isOwned}
-                onUpdate={(albumName) => (album.albumName = albumName)}
-              />
+      {#if showDurationSort}
+        <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={durationSortViewport.width}>
+          {#if isLoadingDurationSort}
+            <div class="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+          {:else}
+            <GalleryViewer
+              bind:assets={durationSortedAssets}
+              assetInteraction={durationSortInteraction}
+              viewport={durationSortViewport}
+            />
+          {/if}
+        </section>
+      {:else}
+        <AssetGrid
+          enableRouting={viewMode === AlbumPageViewMode.SELECT_ASSETS ? false : true}
+          {album}
+          {assetStore}
+          assetInteraction={currentAssetIntersection}
+          {isShared}
+          {isSelectionMode}
+          {singleSelect}
+          {showArchiveIcon}
+          {onSelect}
+          onEscape={handleEscape}
+        >
+          {#if viewMode !== AlbumPageViewMode.SELECT_ASSETS}
+            {#if viewMode !== AlbumPageViewMode.SELECT_THUMBNAIL}
+              <!-- ALBUM TITLE -->
+              <section class="pt-8 md:pt-24">
+                <AlbumTitle
+                  id={album.id}
+                  albumName={album.albumName}
+                  {isOwned}
+                  onUpdate={(albumName) => (album.albumName = albumName)}
+                />
 
-              {#if album.assetCount > 0}
-                <AlbumSummary {album} />
-              {/if}
+                {#if album.assetCount > 0}
+                  <AlbumSummary {album} />
+                {/if}
 
-              <!-- ALBUM SHARING -->
-              {#if album.albumUsers.length > 0 || (album.hasSharedLink && isOwned)}
-                <div class="my-3 flex gap-x-1">
-                  <!-- link -->
-                  {#if album.hasSharedLink && isOwned}
-                    <CircleIconButton
-                      title={$t('create_link_to_share')}
-                      color="gray"
-                      size="20"
-                      icon={mdiLink}
-                      onclick={() => (viewMode = AlbumPageViewMode.LINK_SHARING)}
-                    />
-                  {/if}
+                <!-- ALBUM SHARING -->
+                {#if album.albumUsers.length > 0 || (album.hasSharedLink && isOwned)}
+                  <div class="my-3 flex gap-x-1">
+                    <!-- link -->
+                    {#if album.hasSharedLink && isOwned}
+                      <CircleIconButton
+                        title={$t('create_link_to_share')}
+                        color="gray"
+                        size="20"
+                        icon={mdiLink}
+                        onclick={() => (viewMode = AlbumPageViewMode.LINK_SHARING)}
+                      />
+                    {/if}
 
-                  <!-- owner -->
-                  <button type="button" onclick={() => (viewMode = AlbumPageViewMode.VIEW_USERS)}>
-                    <UserAvatar user={album.owner} size="md" />
-                  </button>
-
-                  <!-- users with write access (collaborators) -->
-                  {#each album.albumUsers.filter(({ role }) => role === AlbumUserRole.Editor) as { user } (user.id)}
+                    <!-- owner -->
                     <button type="button" onclick={() => (viewMode = AlbumPageViewMode.VIEW_USERS)}>
-                      <UserAvatar {user} size="md" />
+                      <UserAvatar user={album.owner} size="md" />
                     </button>
-                  {/each}
 
-                  <!-- display ellipsis if there are readonly users too -->
-                  {#if albumHasViewers}
-                    <CircleIconButton
-                      title={$t('view_all_users')}
-                      color="gray"
-                      size="20"
-                      icon={mdiDotsVertical}
-                      onclick={() => (viewMode = AlbumPageViewMode.VIEW_USERS)}
-                    />
-                  {/if}
+                    <!-- users with write access (collaborators) -->
+                    {#each album.albumUsers.filter(({ role }) => role === AlbumUserRole.Editor) as { user } (user.id)}
+                      <button type="button" onclick={() => (viewMode = AlbumPageViewMode.VIEW_USERS)}>
+                        <UserAvatar {user} size="md" />
+                      </button>
+                    {/each}
 
-                  {#if isOwned}
-                    <CircleIconButton
-                      color="gray"
-                      size="20"
-                      icon={mdiPlus}
-                      onclick={() => (viewMode = AlbumPageViewMode.SELECT_USERS)}
-                      title={$t('add_more_users')}
-                    />
-                  {/if}
+                    <!-- display ellipsis if there are readonly users too -->
+                    {#if albumHasViewers}
+                      <CircleIconButton
+                        title={$t('view_all_users')}
+                        color="gray"
+                        size="20"
+                        icon={mdiDotsVertical}
+                        onclick={() => (viewMode = AlbumPageViewMode.VIEW_USERS)}
+                      />
+                    {/if}
+
+                    {#if isOwned}
+                      <CircleIconButton
+                        color="gray"
+                        size="20"
+                        icon={mdiPlus}
+                        onclick={() => (viewMode = AlbumPageViewMode.SELECT_USERS)}
+                        title={$t('add_more_users')}
+                      />
+                    {/if}
+                  </div>
+                {/if}
+                <!-- ALBUM DESCRIPTION -->
+                <AlbumDescription id={album.id} bind:description={album.description} {isOwned} />
+              </section>
+            {/if}
+
+            <!-- 888999888 -->
+            {#if album.assetCount > 0 && viewMode === AlbumPageViewMode.VIEW}
+              <section class="mt-4">
+                <FilterBar bind:selectedTags bind:isStarred />
+              </section>
+            {/if}
+
+            {#if album.assetCount === 0}
+              <section id="empty-album" class=" mt-[200px] flex place-content-center place-items-center">
+                <div class="w-[300px]">
+                  <p class="text-xs dark:text-immich-dark-fg">{$t('add_photos').toUpperCase()}</p>
+                  <button
+                    type="button"
+                    onclick={() => (viewMode = AlbumPageViewMode.SELECT_ASSETS)}
+                    class="mt-5 flex w-full place-items-center gap-6 rounded-md border bg-immich-bg px-8 py-8 text-immich-fg transition-all hover:bg-gray-100 hover:text-immich-primary dark:border-none dark:bg-immich-dark-gray dark:text-immich-dark-fg dark:hover:text-immich-dark-primary"
+                  >
+                    <span class="text-text-immich-primary dark:text-immich-dark-primary"
+                      ><Icon path={mdiPlus} size="24" />
+                    </span>
+                    <span class="text-lg">{$t('select_photos')}</span>
+                  </button>
                 </div>
-              {/if}
-              <!-- ALBUM DESCRIPTION -->
-              <AlbumDescription id={album.id} bind:description={album.description} {isOwned} />
-            </section>
+              </section>
+            {/if}
           {/if}
-
-          <!-- 888999888 -->
-          {#if album.assetCount > 0 && viewMode === AlbumPageViewMode.VIEW}
-            <section class="mt-4">
-              <FilterBar bind:selectedTags bind:isStarred />
-            </section>
-          {/if}
-
-
-          {#if album.assetCount === 0}
-            <section id="empty-album" class=" mt-[200px] flex place-content-center place-items-center">
-              <div class="w-[300px]">
-                <p class="text-xs dark:text-immich-dark-fg">{$t('add_photos').toUpperCase()}</p>
-                <button
-                  type="button"
-                  onclick={() => (viewMode = AlbumPageViewMode.SELECT_ASSETS)}
-                  class="mt-5 flex w-full place-items-center gap-6 rounded-md border bg-immich-bg px-8 py-8 text-immich-fg transition-all hover:bg-gray-100 hover:text-immich-primary dark:border-none dark:bg-immich-dark-gray dark:text-immich-dark-fg dark:hover:text-immich-dark-primary"
-                >
-                  <span class="text-text-immich-primary dark:text-immich-dark-primary"
-                    ><Icon path={mdiPlus} size="24" />
-                  </span>
-                  <span class="text-lg">{$t('select_photos')}</span>
-                </button>
-              </div>
-            </section>
-          {/if}
-        {/if}
-      </AssetGrid>
+        </AssetGrid>
+      {/if}
 
       {#if showActivityStatus}
         <div class="absolute z-[2] bottom-0 right-0 mb-6 mr-6 justify-self-end">
@@ -921,7 +927,3 @@ $effect(() => {
     color: white;
   }
 </style>
-
-
-
-
