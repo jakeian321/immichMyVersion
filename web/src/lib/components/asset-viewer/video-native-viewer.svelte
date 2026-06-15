@@ -33,6 +33,7 @@
     mdiVolumeHigh,
     mdiBookmark,
     mdiBookmarkOutline,
+    mdiFilmstrip,
   } from '@mdi/js';
 
   interface Props {
@@ -84,6 +85,15 @@
 
   let isAutoSkip = $state(false);
   let autoSkipRate = 4.0;
+
+  const FRAME_PREVIEW_COUNT = 10;
+  let showFramePreview = $state(false);
+  let isGeneratingFramePreview = $state(false);
+  let framePreviewThumbnails = $state<{ time: number; url: string }[]>([]);
+  let wasPlayingBeforeFramePreview = false;
+  let framePreviewVideo: HTMLVideoElement | undefined = $state();
+  let framePreviewCanvas: HTMLCanvasElement | undefined = $state();
+  let framePreviewLoadedUrl = '';
 
   let currentTime = $state(0);
   let duration = $state(0);
@@ -533,6 +543,105 @@
     const seconds = Math.floor(timeInSeconds % 60);
 
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const getFramePreviewTimes = (videoDuration: number): number[] => {
+    const interval = videoDuration / FRAME_PREVIEW_COUNT;
+    return Array.from({ length: FRAME_PREVIEW_COUNT }, (_, i) =>
+      Math.min(i * interval, Math.max(videoDuration - 0.1, 0)),
+    );
+  };
+
+  const captureFramePreview = (time: number): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const video = framePreviewVideo;
+      const canvas = framePreviewCanvas;
+      const context = canvas?.getContext('2d');
+
+      if (!video || !canvas || !context) {
+        reject(new Error('Frame preview is not ready'));
+        return;
+      }
+
+      const onSeeked = () => {
+        video.removeEventListener('seeked', onSeeked);
+        // iOS Safari can fire `seeked` before the frame is actually painted,
+        // so give it an extra couple of frames before drawing to the canvas.
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', 0.7));
+          }),
+        );
+      };
+
+      video.addEventListener('seeked', onSeeked);
+      video.currentTime = time;
+    });
+  };
+
+  const openFramePreview = async () => {
+    if (!videoPlayer || !duration || !framePreviewVideo) {
+      return;
+    }
+
+    wasPlayingBeforeFramePreview = isPlaying;
+    videoPlayer.pause();
+
+    showFramePreview = true;
+    isGeneratingFramePreview = true;
+    framePreviewThumbnails = [];
+
+    try {
+      if (framePreviewLoadedUrl !== assetFileUrl) {
+        framePreviewVideo.src = assetFileUrl;
+        await new Promise<void>((resolve, reject) => {
+          framePreviewVideo?.addEventListener('loadedmetadata', () => resolve(), { once: true });
+          framePreviewVideo?.addEventListener('error', () => reject(new Error('Failed to load video')), {
+            once: true,
+          });
+        });
+        framePreviewLoadedUrl = assetFileUrl;
+
+        // iOS Safari won't decode any frames for drawImage until the video has
+        // actually started playing at least once, so prime it with a play/pause.
+        try {
+          await framePreviewVideo.play();
+          framePreviewVideo.pause();
+        } catch {
+          // Autoplay may be blocked; seeking can still work without priming.
+        }
+      }
+
+      const thumbnails: { time: number; url: string }[] = [];
+      for (const time of getFramePreviewTimes(framePreviewVideo.duration || duration)) {
+        thumbnails.push({ time, url: await captureFramePreview(time) });
+        framePreviewThumbnails = [...thumbnails];
+      }
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_generate_video_preview'));
+    } finally {
+      isGeneratingFramePreview = false;
+    }
+  };
+
+  const closeFramePreview = () => {
+    showFramePreview = false;
+
+    if (wasPlayingBeforeFramePreview && videoPlayer) {
+      videoPlayer.play().catch((error) => handleError(error, $t('errors.unable_to_play_video')));
+    }
+  };
+
+  const jumpToFramePreview = (time: number) => {
+    if (videoPlayer) {
+      videoPlayer.currentTime = time;
+      updateProgress();
+    }
+
+    closeFramePreview();
   };
 
   const resetControlsTimeout = () => {
@@ -1000,6 +1109,20 @@
       </div>
     {/if}
 
+    <!-- Frame Preview Button -->
+    {#if !isZoomed}
+      <div class="z-[1001] fixed right-2 top-[8%]">
+        <button
+          type="button"
+          class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
+          title={$t('frame_preview')}
+          onclick={openFramePreview}
+        >
+          <Icon path={mdiFilmstrip} size="1.1rem" />
+        </button>
+      </div>
+    {/if}
+
     <!-- View Tags Button (V) -->
     {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && tags.length > 0}
       <div class="z-[1001] fixed left-12 top-[12%]">
@@ -1035,191 +1158,238 @@
       </div>
     {/if}
 
-<!-- Eye Icon (now uses tag functionality) - Toggle Tag Elements -->
-{#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
-  <div class="z-[1001] fixed left-0 top-[12%]">
-    <button
-      type="button"
-      class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
-      title={showTagElements ? 'Hide Tags' : 'Show Tags'}
-      onclick={toggleTagElementsVisibility}
-    >
-      <Icon path={showTagElements ? mdiEyeOff : mdiEye} size="1.1rem" />
-    </button>
-  </div>
-{/if}
-
-<!-- Tag Icon (now uses eye/view functionality) - View Tags -->
-{#if isOwner && asset?.id && !isSharedLink() && !isZoomed && tags.length > 0}
-  <div class="z-[1001] fixed left-12 top-[12%]">
-    <button
-      type="button"
-      class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
-      title="Toggle Tags Panel"
-      onclick={toggleTagsPanel}
-    >
-      <Icon path={mdiTag} size="1.1rem" />
-    </button>
-  </div>
-{/if}
-
-<!-- Horizontal Progress Bars (increased width and gap) -->
-{#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
-  {@const numBars = Math.ceil(duration / 8)}
-  {@const barWidth = '2.5in'}
-
-  <div class="z-[1001] fixed left-0 top-[21%] flex flex-col gap-8">
-    {#each Array(numBars) as _, index}
-      {@const segmentStart = index * 8}
-      {@const segmentEnd = Math.min((index + 1) * 8, duration)}
-      {@const segmentDuration = segmentEnd - segmentStart}
-      {@const segmentProgress = Math.max(0, Math.min(100, ((currentTime - segmentStart) / segmentDuration) * 100))}
-      {@const isTopBar = index % 2 === 0}
-
-      <div
-        class="relative cursor-pointer select-none outline-none focus:outline-none active:outline-none"
-        style="width: {barWidth}; height: 10px; -webkit-tap-highlight-color: transparent;"
-        onmousedown={(e) => handleSegmentProgressClick(e, index, segmentDuration)}
-        ontouchstart={(e) => handleSegmentProgressClick(e, index, segmentDuration)}
-      >
-        <div class="absolute inset-0">
-          <div class="w-full h-full bg-white bg-opacity-5 rounded-full">
-            <div
-              class="h-full bg-white bg-opacity-20 rounded-full transition-[width]"
-              style={`width: ${currentTime >= segmentStart && currentTime <= segmentEnd ? segmentProgress : currentTime > segmentEnd ? 100 : 0}%`}
-            ></div>
-          </div>
-        </div>
-      </div>
-    {/each}
-  </div>
-{/if}
-
-<!-- Preset Tag Buttons (moved closer to left edge) -->
-{#if isOwner && asset?.id && !isSharedLink() && !isZoomed && showTagElements}
-  <div class="z-[1001] fixed left-2 bottom-[20%]">
-    <div class="flex flex-col gap-1">
-      {#each getVisiblePresetTags() as presetTag (presetTag.id)}
+    <!-- Eye Icon (now uses tag functionality) - Toggle Tag Elements -->
+    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+      <div class="z-[1001] fixed left-0 top-[12%]">
         <button
           type="button"
-          class={`px-2 py-1 rounded-lg text-white transition-all flex items-center gap-1 ${
-            checkTagSelected(presetTag.value)
-              ? 'bg-immich-primary'
-              : 'bg-black bg-opacity-40 hover:bg-immich-primary/50'
-          }`}
-          onclick={(event) => handleTagButtonClick(event, presetTag.value)}
-          disabled={checkTagProcessing(presetTag.value)}
+          class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
+          title={showTagElements ? 'Hide Tags' : 'Show Tags'}
+          onclick={toggleTagElementsVisibility}
         >
-          <Icon path={mdiTag} size="0.6rem" />
-          <span class="text-xs font-medium">{presetTag.value}</span>
-          {#if checkTagProcessing(presetTag.value)}
-            <span class="ml-1 inline-block h-3 w-3">
-              <LoadingSpinner size="xs" />
-            </span>
-          {/if}
+          <Icon path={showTagElements ? mdiEyeOff : mdiEye} size="1.1rem" />
         </button>
-      {/each}
-    </div>
-  </div>
-{/if}
+      </div>
+    {/if}
 
-<!-- View Tags Panel -->
-{#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
-  <div class="z-[1001] fixed left-0 top-[22%]">
-    <div class="flex flex-col">
-      {#if showTagsPanel && tags.length > 0}
-        <div class="bg-black bg-opacity-40 rounded p-2 max-w-[200px]">
-          <div class="flex flex-wrap gap-1">
-            {#each tags as tag (tag.id)}
-              <div class="flex group transition-all">
-                <a
-                  class="inline-block h-min whitespace-nowrap pl-2 pr-1 py-0.5 text-center align-baseline leading-none text-gray-100 bg-immich-primary rounded-tl-full rounded-bl-full hover:bg-immich-primary/80 transition-all"
-                  href={encodeURI(`${AppRoute.TAGS}/?path=${tag.value}`)}
-                >
-                  <p class="text-xs">
-                    {tag.value}
-                  </p>
-                </a>
+    <!-- Tag Icon (now uses eye/view functionality) - View Tags -->
+    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && tags.length > 0}
+      <div class="z-[1001] fixed left-12 top-[12%]">
+        <button
+          type="button"
+          class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
+          title="Toggle Tags Panel"
+          onclick={toggleTagsPanel}
+        >
+          <Icon path={mdiTag} size="1.1rem" />
+        </button>
+      </div>
+    {/if}
 
-                <button
-                  type="button"
-                  class="text-gray-100 bg-immich-primary/95 rounded-tr-full rounded-br-full place-items-center place-content-center pr-1 pl-0.5 py-0.5 hover:bg-immich-primary/80 transition-all"
-                  title="Remove tag"
-                  onclick={() => handleRemoveTag(tag.id)}
-                >
-                  <Icon path={mdiClose} size="0.75rem" />
-                </button>
+    <!-- Horizontal Progress Bars (increased width and gap) -->
+    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+      {@const numBars = Math.ceil(duration / 8)}
+      {@const barWidth = '2.5in'}
+
+      <div class="z-[1001] fixed left-0 top-[21%] flex flex-col gap-8">
+        {#each Array(numBars) as _, index}
+          {@const segmentStart = index * 8}
+          {@const segmentEnd = Math.min((index + 1) * 8, duration)}
+          {@const segmentDuration = segmentEnd - segmentStart}
+          {@const segmentProgress = Math.max(0, Math.min(100, ((currentTime - segmentStart) / segmentDuration) * 100))}
+          {@const isTopBar = index % 2 === 0}
+
+          <div
+            class="relative cursor-pointer select-none outline-none focus:outline-none active:outline-none"
+            style="width: {barWidth}; height: 10px; -webkit-tap-highlight-color: transparent;"
+            onmousedown={(e) => handleSegmentProgressClick(e, index, segmentDuration)}
+            ontouchstart={(e) => handleSegmentProgressClick(e, index, segmentDuration)}
+          >
+            <div class="absolute inset-0">
+              <div class="w-full h-full bg-white bg-opacity-5 rounded-full">
+                <div
+                  class="h-full bg-white bg-opacity-20 rounded-full transition-[width]"
+                  style={`width: ${currentTime >= segmentStart && currentTime <= segmentEnd ? segmentProgress : currentTime > segmentEnd ? 100 : 0}%`}
+                ></div>
               </div>
-            {/each}
+            </div>
           </div>
-        </div>
-      {/if}
-    </div>
-  </div>
-{/if}
+        {/each}
+      </div>
+    {/if}
 
-<!-- TOK/REG Toggle Button -->
-{#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
-  <div class="z-[1001] fixed right-2 bottom-2">
-    <button
-      type="button"
-      class="bg-black bg-opacity-40 text-white rounded-full px-2 py-1 hover:bg-opacity-60 transition-all"
-      title={showTokTags ? 'Switch to Regular Tags' : 'Switch to TOK Tags'}
-      onclick={toggleTokTagsVisibility}
-    >
-      <span class="text-[10px] font-medium">{showTokTags ? 'REG' : 'TOK'}</span>
-    </button>
-  </div>
-{/if}
-
-<!-- Preset Configuration Modal -->
-{#if showPresetConfig}
-  <Portal>
-    <div class="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-75">
-      <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-        <h3 class="text-white text-lg font-semibold mb-4">Configure Quick Tag Preset</h3>
-        <p class="text-gray-300 text-sm mb-4">Select tags to apply with a quick tap:</p>
-
-        <div class="flex flex-wrap gap-2 mb-6 max-h-96 overflow-y-auto">
-          {#each presetTags as presetTag (presetTag.id)}
+    <!-- Preset Tag Buttons (moved closer to left edge) -->
+    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && showTagElements}
+      <div class="z-[1001] fixed left-2 bottom-[20%]">
+        <div class="flex flex-col gap-1">
+          {#each getVisiblePresetTags() as presetTag (presetTag.id)}
             <button
               type="button"
-              class={`px-3 py-2 rounded-lg text-white transition-all ${
-                tempPresetSelection.includes(presetTag.value) ? 'bg-immich-primary' : 'bg-gray-700 hover:bg-gray-600'
+              class={`px-2 py-1 rounded-lg text-white transition-all flex items-center gap-1 ${
+                checkTagSelected(presetTag.value)
+                  ? 'bg-immich-primary'
+                  : 'bg-black bg-opacity-40 hover:bg-immich-primary/50'
               }`}
-              onclick={() => togglePresetTagSelection(presetTag.value)}
+              onclick={(event) => handleTagButtonClick(event, presetTag.value)}
+              disabled={checkTagProcessing(presetTag.value)}
             >
-              {presetTag.value}
+              <Icon path={mdiTag} size="0.6rem" />
+              <span class="text-xs font-medium">{presetTag.value}</span>
+              {#if checkTagProcessing(presetTag.value)}
+                <span class="ml-1 inline-block h-3 w-3">
+                  <LoadingSpinner size="xs" />
+                </span>
+              {/if}
             </button>
           {/each}
         </div>
+      </div>
+    {/if}
 
-        <div class="flex gap-3">
-          <button
-            type="button"
-            class="flex-1 bg-immich-primary text-white py-2 px-4 rounded-lg hover:bg-immich-primary/80 transition-all"
-            onclick={savePresetConfig}
-          >
-            Save Preset
-          </button>
-          <button
-            type="button"
-            class="flex-1 bg-gray-700 text-white py-2 px-4 rounded-lg hover:bg-gray-600 transition-all"
-            onclick={cancelPresetConfig}
-          >
-            Cancel
-          </button>
+    <!-- View Tags Panel -->
+    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+      <div class="z-[1001] fixed left-0 top-[22%]">
+        <div class="flex flex-col">
+          {#if showTagsPanel && tags.length > 0}
+            <div class="bg-black bg-opacity-40 rounded p-2 max-w-[200px]">
+              <div class="flex flex-wrap gap-1">
+                {#each tags as tag (tag.id)}
+                  <div class="flex group transition-all">
+                    <a
+                      class="inline-block h-min whitespace-nowrap pl-2 pr-1 py-0.5 text-center align-baseline leading-none text-gray-100 bg-immich-primary rounded-tl-full rounded-bl-full hover:bg-immich-primary/80 transition-all"
+                      href={encodeURI(`${AppRoute.TAGS}/?path=${tag.value}`)}
+                    >
+                      <p class="text-xs">
+                        {tag.value}
+                      </p>
+                    </a>
+
+                    <button
+                      type="button"
+                      class="text-gray-100 bg-immich-primary/95 rounded-tr-full rounded-br-full place-items-center place-content-center pr-1 pl-0.5 py-0.5 hover:bg-immich-primary/80 transition-all"
+                      title="Remove tag"
+                      onclick={() => handleRemoveTag(tag.id)}
+                    >
+                      <Icon path={mdiClose} size="0.75rem" />
+                    </button>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
         </div>
       </div>
-    </div>
-  </Portal>
-{/if}
+    {/if}
 
-<!-- Tag Form Modal -->
-{#if isTagFormOpen}
-  <Portal>
-    <TagAssetForm onTag={(tagsIds) => handleTag(tagsIds)} onCancel={handleCancelTag} />
-  </Portal>
-{/if}
+    <!-- TOK/REG Toggle Button -->
+    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+      <div class="z-[1001] fixed right-2 bottom-2">
+        <button
+          type="button"
+          class="bg-black bg-opacity-40 text-white rounded-full px-2 py-1 hover:bg-opacity-60 transition-all"
+          title={showTokTags ? 'Switch to Regular Tags' : 'Switch to TOK Tags'}
+          onclick={toggleTokTagsVisibility}
+        >
+          <span class="text-[10px] font-medium">{showTokTags ? 'REG' : 'TOK'}</span>
+        </button>
+      </div>
+    {/if}
+
+    <!-- Preset Configuration Modal -->
+    {#if showPresetConfig}
+      <Portal>
+        <div class="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-75">
+          <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 class="text-white text-lg font-semibold mb-4">Configure Quick Tag Preset</h3>
+            <p class="text-gray-300 text-sm mb-4">Select tags to apply with a quick tap:</p>
+
+            <div class="flex flex-wrap gap-2 mb-6 max-h-96 overflow-y-auto">
+              {#each presetTags as presetTag (presetTag.id)}
+                <button
+                  type="button"
+                  class={`px-3 py-2 rounded-lg text-white transition-all ${
+                    tempPresetSelection.includes(presetTag.value)
+                      ? 'bg-immich-primary'
+                      : 'bg-gray-700 hover:bg-gray-600'
+                  }`}
+                  onclick={() => togglePresetTagSelection(presetTag.value)}
+                >
+                  {presetTag.value}
+                </button>
+              {/each}
+            </div>
+
+            <div class="flex gap-3">
+              <button
+                type="button"
+                class="flex-1 bg-immich-primary text-white py-2 px-4 rounded-lg hover:bg-immich-primary/80 transition-all"
+                onclick={savePresetConfig}
+              >
+                Save Preset
+              </button>
+              <button
+                type="button"
+                class="flex-1 bg-gray-700 text-white py-2 px-4 rounded-lg hover:bg-gray-600 transition-all"
+                onclick={cancelPresetConfig}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </Portal>
+    {/if}
+
+    <!-- Tag Form Modal -->
+    {#if isTagFormOpen}
+      <Portal>
+        <TagAssetForm onTag={(tagsIds) => handleTag(tagsIds)} onCancel={handleCancelTag} />
+      </Portal>
+    {/if}
+
+    <!-- Frame Preview Overlay -->
+    {#if showFramePreview}
+      <Portal>
+        <div class="fixed inset-0 z-[9999] flex flex-col bg-black bg-opacity-90 p-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg text-white">{$t('frame_preview')}</h2>
+            <button type="button" class="text-white p-2" title={$t('close')} onclick={closeFramePreview}>
+              <Icon path={mdiClose} size="1.5rem" />
+            </button>
+          </div>
+
+          <div class="flex-1 overflow-y-auto">
+            <div class="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {#each framePreviewThumbnails as frame (frame.time)}
+                <button
+                  type="button"
+                  class="relative aspect-video w-full overflow-hidden rounded"
+                  onclick={() => jumpToFramePreview(frame.time)}
+                >
+                  <img src={frame.url} alt={formatTime(frame.time)} class="h-full w-full object-cover" />
+                  <span class="absolute bottom-1 right-1 rounded bg-black bg-opacity-60 px-1 text-xs text-white">
+                    {formatTime(frame.time)}
+                  </span>
+                </button>
+              {/each}
+
+              {#if isGeneratingFramePreview}
+                {#each Array.from({ length: FRAME_PREVIEW_COUNT - framePreviewThumbnails.length }) as _, index (index)}
+                  <div class="aspect-video w-full animate-pulse rounded bg-white bg-opacity-10"></div>
+                {/each}
+              {/if}
+            </div>
+          </div>
+        </div>
+      </Portal>
+    {/if}
+
+    <video
+      bind:this={framePreviewVideo}
+      muted
+      playsinline
+      class="pointer-events-none fixed left-0 top-0 -z-50 h-px w-px opacity-0"
+    ></video>
+    <canvas bind:this={framePreviewCanvas} class="hidden"></canvas>
   </div>
 </div>
