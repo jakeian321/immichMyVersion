@@ -66,6 +66,7 @@
     getActivities,
     getActivityStatistics,
     getAlbumInfo,
+    searchAssets,
     updateAlbumInfo,
     type ActivityResponseDto,
     type AlbumUserAddDto,
@@ -98,16 +99,27 @@
 
   let isOrganizing = $state(false);
 
-  //888999888
-  // Add these imports along with your existing imports
-  import Combobox from '$lib/components/shared-components/combobox.svelte';
-  import { SvelteSet } from 'svelte/reactivity';
-  import FilterBar from '$lib/components/shared-components/filter-bar.svelte'; // You may need
+  import FilterBar from '$lib/components/shared-components/filter-bar.svelte';
 
-  // Add these variables to your state declarations
-  let selectedTags = $state(new SvelteSet<string>());
   let isStarred = $state(false);
-  // Add other filter states as needed
+  let searchTerm = $state('');
+  let globalSearchActive = $state(false);
+  let isSearchingByFilename = $state(false);
+  let filenameSearchResults: AssetResponseDto[] = $state([]);
+  // height is set arbitrarily large so GalleryViewer renders every asset instead of
+  // virtualizing based on window scroll position, which doesn't track this view's scroll container
+  const filenameSearchViewport: Viewport = $state({ width: 0, height: 100_000 });
+  const filenameSearchInteraction = new AssetInteraction();
+
+  let albumSearchTerm = $state('');
+  let albumSearchActive = $state(false);
+  let albumAssetsForSearch: AssetResponseDto[] | undefined = $state();
+  let isLoadingAlbumSearch = $state(false);
+  let albumSearchResults: AssetResponseDto[] = $state([]);
+  // height is set arbitrarily large so GalleryViewer renders every asset instead of
+  // virtualizing based on window scroll position, which doesn't track this view's scroll container
+  const albumSearchViewport: Viewport = $state({ width: 0, height: 100_000 });
+  const albumSearchInteraction = new AssetInteraction();
 
   interface Props {
     data: PageData;
@@ -476,44 +488,74 @@
 
   let assetStore = new AssetStore();
 
-  //commented this original out 888999888
-
-  // $effect(() => {
-  //   if (viewMode === AlbumPageViewMode.VIEW) {
-  //     void assetStore.updateOptions({ albumId, order: albumOrder });
-  //   } else if (viewMode === AlbumPageViewMode.SELECT_ASSETS) {
-  //     void assetStore.updateOptions({ isArchived: false, withPartners: true, timelineAlbumId: albumId });
-  //   }
-  // });
-
-  //added this 888999888
   $effect(() => {
     if (viewMode === AlbumPageViewMode.VIEW) {
-      // Convert Set to Array consistently
-      const tagIdsArray = selectedTags.size > 0 ? Array.from(selectedTags) : undefined;
-      console.log('Selected tags updated in album page:', tagIdsArray);
-
-      console.log('Updating asset store with filters:', {
-        albumId,
-        tagIds: tagIdsArray,
-        isFavorite: isStarred,
-      });
-
-      void assetStore.updateOptions({
-        albumId,
-        order: albumOrder,
-        tagIds: tagIdsArray,
-        isFavorite: isStarred,
-      });
+      void assetStore.updateOptions({ albumId, order: albumOrder, isFavorite: isStarred });
     } else if (viewMode === AlbumPageViewMode.SELECT_ASSETS) {
       void assetStore.updateOptions({ isArchived: false, withPartners: true, timelineAlbumId: albumId });
     }
   });
 
   onDestroy(() => assetStore.destroy());
-  // let timelineStore = new AssetStore();
-  // $effect(() => void timelineStore.updateOptions({ isArchived: false, withPartners: true, timelineAlbumId: albumId }));
-  // onDestroy(() => timelineStore.destroy());
+
+  const handleGlobalSearch = async () => {
+    const term = searchTerm.trim();
+    if (!term) {
+      return;
+    }
+
+    globalSearchActive = true;
+    isSearchingByFilename = true;
+    try {
+      const { assets } = await searchAssets({
+        metadataSearchDto: { albumIds: [album.id], originalFileName: term },
+      });
+      filenameSearchResults = assets.items;
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_search_for_assets'));
+    } finally {
+      isSearchingByFilename = false;
+    }
+  };
+
+  const handleGlobalSearchClear = () => {
+    filenameSearchResults = [];
+    globalSearchActive = false;
+  };
+
+  const loadAlbumAssetsForSearch = async () => {
+    if (albumAssetsForSearch !== undefined || isLoadingAlbumSearch) {
+      return;
+    }
+
+    isLoadingAlbumSearch = true;
+    try {
+      const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
+      albumAssetsForSearch = fullAlbum.assets;
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_load_album'));
+    } finally {
+      isLoadingAlbumSearch = false;
+    }
+  };
+
+  const handleAlbumSearch = async () => {
+    const term = albumSearchTerm.trim().toLowerCase();
+    if (!term) {
+      return;
+    }
+
+    albumSearchActive = true;
+    await loadAlbumAssetsForSearch();
+    albumSearchResults = (albumAssetsForSearch ?? []).filter((asset) =>
+      asset.originalFileName.toLowerCase().includes(term),
+    );
+  };
+
+  const handleAlbumSearchClear = () => {
+    albumSearchResults = [];
+    albumSearchActive = false;
+  };
 
   let isOwned = $derived($user.id == album.ownerId);
 
@@ -720,7 +762,59 @@
     <main
       class="relative h-dvh overflow-hidden bg-immich-bg px-6 max-md:pt-[var(--navbar-height-md)] pt-[var(--navbar-height)] dark:bg-immich-dark-bg"
     >
-      {#if showDurationSort}
+      {#if albumSearchActive}
+        <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={albumSearchViewport.width}>
+          <FilterBar
+            bind:searchTerm
+            bind:albumSearchTerm
+            bind:isStarred
+            onsearch={handleGlobalSearch}
+            onAlbumSearch={handleAlbumSearch}
+            onclear={handleGlobalSearchClear}
+            onAlbumClear={handleAlbumSearchClear}
+          />
+
+          {#if isLoadingAlbumSearch}
+            <div class="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+          {:else if albumSearchResults.length === 0}
+            <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
+          {:else}
+            <GalleryViewer
+              bind:assets={albumSearchResults}
+              assetInteraction={albumSearchInteraction}
+              viewport={albumSearchViewport}
+            />
+          {/if}
+        </section>
+      {:else if globalSearchActive}
+        <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={filenameSearchViewport.width}>
+          <FilterBar
+            bind:searchTerm
+            bind:albumSearchTerm
+            bind:isStarred
+            onsearch={handleGlobalSearch}
+            onAlbumSearch={handleAlbumSearch}
+            onclear={handleGlobalSearchClear}
+            onAlbumClear={handleAlbumSearchClear}
+          />
+
+          {#if isSearchingByFilename}
+            <div class="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+          {:else if filenameSearchResults.length === 0}
+            <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
+          {:else}
+            <GalleryViewer
+              bind:assets={filenameSearchResults}
+              assetInteraction={filenameSearchInteraction}
+              viewport={filenameSearchViewport}
+            />
+          {/if}
+        </section>
+      {:else if showDurationSort}
         <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={durationSortViewport.width}>
           {#if isLoadingDurationSort}
             <div class="flex h-full items-center justify-center">
@@ -815,10 +909,17 @@
               </section>
             {/if}
 
-            <!-- 888999888 -->
             {#if album.assetCount > 0 && viewMode === AlbumPageViewMode.VIEW}
               <section class="mt-4">
-                <FilterBar bind:selectedTags bind:isStarred />
+                <FilterBar
+                  bind:searchTerm
+                  bind:albumSearchTerm
+                  bind:isStarred
+                  onsearch={handleGlobalSearch}
+                  onAlbumSearch={handleAlbumSearch}
+                  onclear={handleGlobalSearchClear}
+                  onAlbumClear={handleAlbumSearchClear}
+                />
               </section>
             {/if}
 
