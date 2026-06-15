@@ -35,7 +35,9 @@
   onclick={() => goto(`${AppRoute.ALBUMS}/${album.id}`)}
   {oncontextmenu}
 >
-  <td class="text-md text-ellipsis text-left w-8/12 sm:w-4/12 md:w-4/12 xl:w-[30%] 2xl:w-[40%] items-center">
+  <td
+    class="text-md truncate text-left items-center max-sm:w-auto max-sm:max-w-[60%] w-8/12 sm:w-4/12 md:w-4/12 xl:w-[30%] 2xl:w-[40%]"
+  >
     {album.albumName}
     {#if album.shared}
       <Icon
@@ -48,7 +50,7 @@
       />
     {/if}
   </td>
-  <td class="text-md text-ellipsis text-center sm:w-2/12 md:w-2/12 xl:w-[15%] 2xl:w-[12%]">
+  <td class="text-md truncate text-center max-sm:flex-shrink-0 max-sm:pl-3 sm:w-2/12 md:w-2/12 xl:w-[15%] 2xl:w-[12%]">
     {$t('items_count', { values: { count: album.assetCount } })}
   </td>
   <td class="text-md hidden text-ellipsis text-center sm:block w-3/12 xl:w-[15%] 2xl:w-[12%]">

@@ -128,6 +128,8 @@
   let reactions: ActivityResponseDto[] = $state([]);
   let albumOrder: AssetOrder | undefined = $state(data.album.order);
 
+  const DURATION_SORT_LIMIT = 50;
+
   let showDurationSort = $state(false);
   let isLoadingDurationSort = $state(false);
   let durationSortedAssets: AssetResponseDto[] = $state([]);
@@ -373,7 +375,8 @@
       const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
       durationSortedAssets = fullAlbum.assets
         .slice()
-        .sort((a, b) => timeToSeconds(b.duration) - timeToSeconds(a.duration));
+        .sort((a, b) => timeToSeconds(b.duration) - timeToSeconds(a.duration))
+        .slice(0, DURATION_SORT_LIMIT);
     } catch (error) {
       handleError(error, $t('errors.unable_to_load_album'));
       showDurationSort = false;

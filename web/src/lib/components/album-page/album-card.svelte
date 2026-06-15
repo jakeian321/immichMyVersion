@@ -59,7 +59,7 @@
 
   <div class="mt-4">
     <p
-      class="w-full leading-6 text-lg line-clamp-2 font-semibold text-black dark:text-white group-hover:text-immich-primary dark:group-hover:text-immich-dark-primary"
+      class="w-full leading-6 text-lg line-clamp-2 max-sm:line-clamp-1 max-sm:text-base font-semibold text-black dark:text-white group-hover:text-immich-primary dark:group-hover:text-immich-dark-primary"
       data-testid="album-name"
       title={album.albumName}
     >
