@@ -56,6 +56,89 @@ export const getCombinedAssetIds = (albums: AlbumResponseDto[]): string[] => {
 };
 
 /**
+ * -----------------
+ * Album Collections
+ * -----------------
+ *
+ * A "collection" is a regular, asset-less album that groups links to other albums. The list of
+ * linked album ids is stored as JSON in the collection album's `description` field, so it syncs
+ * across devices the same way any other album data does, without any backend changes.
+ */
+const COLLECTION_MARKER = 'immich-web-collection';
+
+interface CollectionDescription {
+  marker: typeof COLLECTION_MARKER;
+  albumIds: string[];
+}
+
+const parseCollectionDescription = (description: string): CollectionDescription | undefined => {
+  try {
+    const data = JSON.parse(description);
+    if (data?.marker === COLLECTION_MARKER && Array.isArray(data.albumIds)) {
+      return { marker: COLLECTION_MARKER, albumIds: data.albumIds.filter((id: unknown) => typeof id === 'string') };
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+};
+
+const stringifyCollectionDescription = (albumIds: string[]): string =>
+  JSON.stringify({ marker: COLLECTION_MARKER, albumIds });
+
+export const isCollectionAlbum = (album: AlbumResponseDto): boolean =>
+  parseCollectionDescription(album.description) !== undefined;
+
+export const getCollectionAlbumIds = (album: AlbumResponseDto): string[] =>
+  parseCollectionDescription(album.description)?.albumIds ?? [];
+
+export const createCollection = async (name: string, albumIds: string[] = []) => {
+  try {
+    return await sdk.createAlbum({
+      createAlbumDto: {
+        albumName: name,
+        description: stringifyCollectionDescription(albumIds),
+      },
+    });
+  } catch (error) {
+    const $t = get(t);
+    handleError(error, $t('errors.failed_to_create_album'));
+  }
+};
+
+export const renameCollection = async (collection: AlbumResponseDto, name: string) => {
+  try {
+    return await sdk.updateAlbumInfo({ id: collection.id, updateAlbumDto: { albumName: name } });
+  } catch (error) {
+    const $t = get(t);
+    handleError(error, $t('errors.unable_to_update_album_info'));
+  }
+};
+
+export const setCollectionAlbums = async (collection: AlbumResponseDto, albumIds: string[]) => {
+  try {
+    return await sdk.updateAlbumInfo({
+      id: collection.id,
+      updateAlbumDto: { description: stringifyCollectionDescription(albumIds) },
+    });
+  } catch (error) {
+    const $t = get(t);
+    handleError(error, $t('errors.unable_to_update_album_info'));
+  }
+};
+
+export const deleteCollection = async (collection: AlbumResponseDto) => {
+  try {
+    await sdk.deleteAlbum({ id: collection.id });
+    return true;
+  } catch (error) {
+    const $t = get(t);
+    handleError(error, $t('errors.unable_to_delete_album'));
+    return false;
+  }
+};
+
+/**
  * -------------
  * Album Sorting
  * -------------
