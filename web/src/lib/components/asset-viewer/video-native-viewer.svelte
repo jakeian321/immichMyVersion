@@ -86,7 +86,7 @@
   let isAutoSkip = $state(false);
   let autoSkipRate = 4.0;
 
-  const FRAME_PREVIEW_COUNT = 10;
+  const FRAME_PREVIEW_COUNT = 21;
   let showFramePreview = $state(false);
   let isGeneratingFramePreview = $state(false);
   let framePreviewThumbnails = $state<{ time: number; url: string }[]>([]);
@@ -1350,8 +1350,8 @@
     <!-- Frame Preview Overlay -->
     {#if showFramePreview}
       <Portal>
-        <div class="fixed inset-0 z-[9999] flex flex-col bg-black bg-opacity-90 p-4">
-          <div class="flex items-center justify-between">
+        <div class="fixed inset-0 z-[9999] flex flex-col bg-black bg-opacity-90 p-2">
+          <div class="flex items-center justify-between px-1">
             <h2 class="text-lg text-white">{$t('frame_preview')}</h2>
             <button type="button" class="text-white p-2" title={$t('close')} onclick={closeFramePreview}>
               <Icon path={mdiClose} size="1.5rem" />
@@ -1359,15 +1359,17 @@
           </div>
 
           <div class="flex-1 overflow-y-auto">
-            <div class="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <div class="grid h-full grid-cols-3 grid-rows-7 gap-1.5 sm:grid-cols-6 sm:grid-rows-4 sm:gap-2">
               {#each framePreviewThumbnails as frame (frame.time)}
                 <button
                   type="button"
-                  class="relative aspect-video w-full overflow-hidden rounded"
+                  class="relative h-full w-full overflow-hidden rounded-sm"
                   onclick={() => jumpToFramePreview(frame.time)}
                 >
                   <img src={frame.url} alt={formatTime(frame.time)} class="h-full w-full object-cover" />
-                  <span class="absolute bottom-1 right-1 rounded bg-black bg-opacity-60 px-1 text-xs text-white">
+                  <span
+                    class="absolute bottom-0.5 right-0.5 rounded-sm bg-black bg-opacity-60 px-1 text-[10px] text-white"
+                  >
                     {formatTime(frame.time)}
                   </span>
                 </button>
@@ -1375,7 +1377,7 @@
 
               {#if isGeneratingFramePreview}
                 {#each Array.from({ length: FRAME_PREVIEW_COUNT - framePreviewThumbnails.length }) as _, index (index)}
-                  <div class="aspect-video w-full animate-pulse rounded bg-white bg-opacity-10"></div>
+                  <div class="h-full w-full animate-pulse rounded-sm bg-white bg-opacity-10"></div>
                 {/each}
               {/if}
             </div>
