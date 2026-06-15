@@ -342,7 +342,59 @@
     if ($slideshowState === SlideshowState.PlaySlideshow) {
       $stopSlideshowProgress = true;
     }
+
+    if (isAutoAdvancing) {
+      scheduleAutoAdvance();
+    }
   };
+
+  /**
+   * Continuous auto-advance mode
+   */
+
+  const AUTO_ADVANCE_DELAY_MS = 1500;
+
+  let isAutoAdvancing = $state(false);
+  let autoAdvanceTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  const clearAutoAdvanceTimeout = () => {
+    if (autoAdvanceTimeout) {
+      clearTimeout(autoAdvanceTimeout);
+      autoAdvanceTimeout = null;
+    }
+  };
+
+  const scheduleAutoAdvance = () => {
+    clearAutoAdvanceTimeout();
+
+    if (!isAutoAdvancing) {
+      return;
+    }
+
+    autoAdvanceTimeout = setTimeout(() => {
+      void navigateAsset('next');
+    }, AUTO_ADVANCE_DELAY_MS);
+  };
+
+  const startAutoAdvance = () => {
+    isAutoAdvancing = true;
+    scheduleAutoAdvance();
+  };
+
+  const stopAutoAdvance = () => {
+    isAutoAdvancing = false;
+    clearAutoAdvanceTimeout();
+    void navigateAsset('previous');
+  };
+
+  $effect(() => {
+    // image assets don't fire onVideoStarted, so re-schedule once the new asset is shown
+    if (isAutoAdvancing && asset.type === AssetTypeEnum.Image) {
+      scheduleAutoAdvance();
+    }
+  });
+
+  onDestroy(clearAutoAdvanceTimeout);
 
   const handlePlaySlideshow = async () => {
     try {
@@ -460,6 +512,36 @@
     <div class="z-[1001] fixed left-[0%] bottom-[10%]">
       <PreviousAssetAction onPreviousAsset={() => navigateAsset('previous')} />
     </div>
+  {/if}
+
+  {#if $slideshowState === SlideshowState.None}
+    {#if isAutoAdvancing}
+      <!-- While auto-advancing, tapping anywhere stops it and steps back one asset -->
+      <button
+        type="button"
+        class="z-[1001] fixed inset-0 cursor-default bg-transparent"
+        onclick={stopAutoAdvance}
+        aria-label="Stop auto-advance"
+      ></button>
+    {/if}
+
+    <!-- Continuous auto-advance toggle: tap to start advancing to the next asset every 1.5s
+         (after each video has started playing); tap anywhere on screen to stop -->
+    <div
+      class={[
+        'z-[1001] pointer-events-none fixed bottom-4 left-1/2 -translate-x-1/2 h-8 w-8 rounded-full transition-all',
+        isAutoAdvancing ? 'bg-immich-primary/60 ring-2 ring-white' : 'bg-white/20',
+      ]}
+    ></div>
+
+    {#if !isAutoAdvancing}
+      <button
+        type="button"
+        class="z-[1002] fixed bottom-4 left-1/2 -translate-x-1/2 h-8 w-8 rounded-full bg-transparent hover:bg-white/10 transition-all"
+        onclick={startAutoAdvance}
+        aria-label="Start auto-advance"
+      ></button>
+    {/if}
   {/if}
 
   <!-- Asset Viewer -->
