@@ -19,7 +19,7 @@
   import { AppRoute } from '$lib/constants';
   import { isSharedLink } from '$lib/utils';
   import { removeTag, tagAssets } from '$lib/utils/asset-utils';
-  import { getAssetInfo, type AssetResponseDto, getAllTags } from '@immich/sdk';
+  import { getAssetInfo, type AssetResponseDto, getAllTags, upsertTags } from '@immich/sdk';
   import {
     mdiClose,
     mdiPlus,
@@ -782,6 +782,37 @@
     applyTagToAsset(tagValue);
   };
 
+  const handleDoubleClick = async (e: MouseEvent) => {
+    if (isZoomed || !asset?.id || !isOwner) {
+      return;
+    }
+    e.stopPropagation();
+
+    const tagValue = 'low';
+
+    // no-op if already tagged
+    if (asset.tags?.some((tag) => tag.value.toLowerCase() === tagValue)) {
+      return;
+    }
+
+    try {
+      let tagId = availableTagsMap[tagValue];
+      if (!tagId) {
+        const [created] = await upsertTags({ tagUpsertDto: { tags: [tagValue] } });
+        if (created) {
+          tagId = created.id;
+          availableTagsMap = { ...availableTagsMap, [tagValue]: tagId };
+        }
+      }
+      if (tagId) {
+        await tagAssets({ tagIds: [tagId], assetIds: [asset.id], showNotification: false });
+        asset = await getAssetInfo({ id: asset.id });
+      }
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_add_tag'));
+    }
+  };
+
   const isPresetTagSelected = (tagValue: string): boolean => {
     return asset?.tags?.some((tag) => tag.value.toLowerCase() === tagValue.toLowerCase()) || false;
   };
@@ -1065,6 +1096,7 @@
           togglePlayPause();
         }
       }}
+      ondblclick={handleDoubleClick}
     >
     </video>
 
@@ -1111,7 +1143,7 @@
 
     <!-- Frame Preview Button -->
     {#if !isZoomed}
-      <div class="z-[1001] fixed right-2 top-[8%]">
+      <div class="z-[1001] fixed left-24 top-[18%]">
         <button
           type="button"
           class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
