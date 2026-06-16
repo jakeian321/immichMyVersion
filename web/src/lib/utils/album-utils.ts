@@ -51,8 +51,15 @@ export const createAlbumAndRedirect = async (name?: string, assetIds?: string[])
  */
 export const COMBINE_ALBUM_NAME = 'Combine';
 
-export const getCombinedAssetIds = (albums: AlbumResponseDto[]): string[] => {
-  return [...new Set(albums.flatMap((album) => album.assets.map((asset) => asset.id)))];
+export const getCombinedAssetIds = (albums: AlbumResponseDto[], perAlbumCap?: number): string[] => {
+  return [
+    ...new Set(
+      albums.flatMap((album) => {
+        const assets = perAlbumCap ? album.assets.slice(0, perAlbumCap) : album.assets;
+        return assets.map((asset) => asset.id);
+      }),
+    ),
+  ];
 };
 
 /**
