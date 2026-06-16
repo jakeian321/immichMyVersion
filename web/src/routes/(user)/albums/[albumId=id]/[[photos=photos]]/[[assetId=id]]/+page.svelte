@@ -828,7 +828,9 @@
             />
           {/if}
         </section>
-      {:else}
+      {/if}
+
+      <div class:hidden={albumSearchActive || globalSearchActive || showDurationSort} class="h-full">
         <AssetGrid
           enableRouting={viewMode === AlbumPageViewMode.SELECT_ASSETS ? false : true}
           {album}
@@ -942,7 +944,7 @@
             {/if}
           {/if}
         </AssetGrid>
-      {/if}
+      </div>
 
       {#if showActivityStatus}
         <div class="absolute z-[2] bottom-0 right-0 mb-6 mr-6 justify-self-end">
