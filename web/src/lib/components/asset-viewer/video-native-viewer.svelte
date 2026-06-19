@@ -243,62 +243,6 @@
       assetFileUrl = getAssetPlaybackUrl({ id: assetId, cacheKey });
       forceMuted = false;
       $videoViewerMuted = false;
-
-      Object.defineProperty(videoPlayer, 'videoWidth', {
-        value: 576,
-        writable: false,
-        configurable: true,
-      });
-      Object.defineProperty(videoPlayer, 'videoHeight', {
-        value: 1118,
-        writable: false,
-        configurable: true,
-      });
-      console.log('Pre-loaded dimension override: forcing all videos to 576x1118');
-
-      Object.defineProperty(videoPlayer, 'naturalWidth', {
-        value: 576,
-        writable: false,
-        configurable: true,
-      });
-      Object.defineProperty(videoPlayer, 'naturalHeight', {
-        value: 1118,
-        writable: false,
-        configurable: true,
-      });
-
-      videoPlayer.style.aspectRatio = '576/1118';
-      videoPlayer.style.width = '100%';
-      videoPlayer.style.height = '100%';
-      videoPlayer.style.objectFit = 'cover';
-
-      videoPlayer.load();
-
-      videoPlayer.addEventListener('loadedmetadata', () => {
-        Object.defineProperty(videoPlayer, 'videoWidth', {
-          value: 576,
-          writable: false,
-          configurable: true,
-        });
-        Object.defineProperty(videoPlayer, 'videoHeight', {
-          value: 1118,
-          writable: false,
-          configurable: true,
-        });
-        Object.defineProperty(videoPlayer, 'naturalWidth', {
-          value: 576,
-          writable: false,
-          configurable: true,
-        });
-        Object.defineProperty(videoPlayer, 'naturalHeight', {
-          value: 1118,
-          writable: false,
-          configurable: true,
-        });
-
-        window.dispatchEvent(new Event('resize'));
-        console.log('Post-metadata dimension override applied');
-      });
     }
 
     await initializeTags();
