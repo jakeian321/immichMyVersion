@@ -112,6 +112,10 @@
     }
     e.stopPropagation();
     e.preventDefault();
+    // stop any hover-triggered video preview decoding before the asset viewer opens its own
+    // video player, otherwise they compete for video decode resources and the viewer's video
+    // appears frozen (while its audio still plays) until paused/played manually
+    mouseOver = false;
     callClickHandlers();
   };
 
