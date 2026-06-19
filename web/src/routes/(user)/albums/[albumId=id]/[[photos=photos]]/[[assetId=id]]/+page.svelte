@@ -85,6 +85,7 @@
     mdiPlus,
     mdiPresentationPlay,
     mdiShareVariantOutline,
+    mdiSortClockAscendingOutline,
     mdiSortClockDescendingOutline,
   } from '@mdi/js';
   import { fly } from 'svelte/transition';
@@ -143,8 +144,11 @@
   const DURATION_SORT_LIMIT = 50;
 
   let showDurationSort = $state(false);
+  let durationSortDirection: 'desc' | 'asc' = $state('desc');
   let isLoadingDurationSort = $state(false);
   let durationSortedAssets: AssetResponseDto[] = $state([]);
+  let durationSortAllAssets: AssetResponseDto[] = $state([]);
+  let durationSortPage = $state(0);
   // height is set arbitrarily large so GalleryViewer renders every asset instead of
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const durationSortViewport: Viewport = $state({ width: 0, height: 100_000 });
@@ -372,29 +376,60 @@
     await downloadAlbum(album);
   };
 
-  const toggleDurationSort = async () => {
-    if (showDurationSort) {
+  const sortByDuration = (assets: AssetResponseDto[], direction: 'desc' | 'asc') =>
+    assets
+      .slice()
+      .sort((a, b) =>
+        direction === 'desc'
+          ? timeToSeconds(b.duration) - timeToSeconds(a.duration)
+          : timeToSeconds(a.duration) - timeToSeconds(b.duration),
+      );
+
+  const toggleDurationSort = async (direction: 'desc' | 'asc') => {
+    if (showDurationSort && durationSortDirection === direction) {
       showDurationSort = false;
       cancelMultiselect(durationSortInteraction);
+      return;
+    }
+
+    durationSortDirection = direction;
+
+    if (showDurationSort) {
+      cancelMultiselect(durationSortInteraction);
+      durationSortPage = 0;
+      durationSortAllAssets = sortByDuration(durationSortAllAssets, direction);
+      durationSortedAssets = durationSortAllAssets.slice(0, DURATION_SORT_LIMIT);
       return;
     }
 
     showDurationSort = true;
     isLoadingDurationSort = true;
     durationSortedAssets = [];
+    durationSortAllAssets = [];
+    durationSortPage = 0;
 
     try {
       const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
-      durationSortedAssets = fullAlbum.assets
-        .slice()
-        .sort((a, b) => timeToSeconds(b.duration) - timeToSeconds(a.duration))
-        .slice(0, DURATION_SORT_LIMIT);
+      durationSortAllAssets = sortByDuration(fullAlbum.assets, direction);
+      durationSortedAssets = durationSortAllAssets.slice(0, DURATION_SORT_LIMIT);
     } catch (error) {
       handleError(error, $t('errors.unable_to_load_album'));
       showDurationSort = false;
     } finally {
       isLoadingDurationSort = false;
     }
+  };
+
+  const hasMoreDurationSortedAssets = $derived(
+    (durationSortPage + 1) * DURATION_SORT_LIMIT < durationSortAllAssets.length,
+  );
+
+  const loadNextDurationSortPage = () => {
+    durationSortPage += 1;
+    durationSortedAssets = durationSortAllAssets.slice(
+      durationSortPage * DURATION_SORT_LIMIT,
+      (durationSortPage + 1) * DURATION_SORT_LIMIT,
+    );
   };
 
   const handleRemoveAlbum = async () => {
@@ -674,10 +709,18 @@
               <CircleIconButton title={$t('slideshow')} onclick={handleStartSlideshow} icon={mdiPresentationPlay} />
               <CircleIconButton title={$t('download')} onclick={handleDownloadAlbum} icon={mdiFolderDownloadOutline} />
               <CircleIconButton
-                title={showDurationSort ? $t('close') : $t('sort_by_duration')}
-                onclick={toggleDurationSort}
-                icon={showDurationSort ? mdiClose : mdiSortClockDescendingOutline}
-                color={showDurationSort ? 'primary' : undefined}
+                title={showDurationSort && durationSortDirection === 'desc' ? $t('close') : $t('sort_by_duration')}
+                onclick={() => toggleDurationSort('desc')}
+                icon={showDurationSort && durationSortDirection === 'desc' ? mdiClose : mdiSortClockDescendingOutline}
+                color={showDurationSort && durationSortDirection === 'desc' ? 'primary' : undefined}
+              />
+              <CircleIconButton
+                title={showDurationSort && durationSortDirection === 'asc'
+                  ? $t('close')
+                  : $t('sort_by_duration_ascending')}
+                onclick={() => toggleDurationSort('asc')}
+                icon={showDurationSort && durationSortDirection === 'asc' ? mdiClose : mdiSortClockAscendingOutline}
+                color={showDurationSort && durationSortDirection === 'asc' ? 'primary' : undefined}
               />
 
               {#if isOwned}
@@ -826,6 +869,11 @@
               assetInteraction={durationSortInteraction}
               viewport={durationSortViewport}
             />
+            {#if hasMoreDurationSortedAssets}
+              <div class="flex justify-center pb-4">
+                <Button onclick={loadNextDurationSortPage}>{$t('next')}</Button>
+              </div>
+            {/if}
           {/if}
         </section>
       {/if}

@@ -1244,6 +1244,7 @@
   "slideshow_settings": "Slideshow settings",
   "sort_albums_by": "Sort albums by...",
   "sort_by_duration": "Sort by duration",
+  "sort_by_duration_ascending": "Sort by duration (shortest first)",
   "sort_created": "Date created",
   "sort_items": "Number of items",
   "sort_modified": "Date modified",
