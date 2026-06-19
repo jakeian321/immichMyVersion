@@ -39,7 +39,6 @@
   import { numberOfComments, setNumberOfComments, updateNumberOfComments } from '$lib/stores/activity.store';
   import { assetViewingStore } from '$lib/stores/asset-viewing.store';
   import { AssetStore, type Viewport } from '$lib/stores/assets-store.svelte';
-  import { SlideshowNavigation, SlideshowState, slideshowStore } from '$lib/stores/slideshow.store';
   import { preferences, user } from '$lib/stores/user.store';
   import { handlePromiseError } from '$lib/utils';
   import { downloadAlbum, cancelMultiselect } from '$lib/utils/asset-utils';
@@ -83,8 +82,6 @@
     mdiImagePlusOutline,
     mdiLink,
     mdiPlus,
-    mdiPresentationPlay,
-    mdiShareVariantOutline,
     mdiSortClockAscendingOutline,
     mdiSortClockDescendingOutline,
   } from '@mdi/js';
@@ -128,8 +125,7 @@
 
   let { data = $bindable() }: Props = $props();
 
-  let { isViewing: showAssetViewer, setAsset, gridScrollTarget } = assetViewingStore;
-  let { slideshowState, slideshowNavigation } = slideshowStore;
+  let { isViewing: showAssetViewer, gridScrollTarget } = assetViewingStore;
 
   let oldAt: AssetGridRouteSearchParams | null | undefined = $state();
 
@@ -246,17 +242,6 @@
 
   const handleOpenAndCloseActivityTab = () => {
     isShowActivity = !isShowActivity;
-  };
-
-  const handleStartSlideshow = async () => {
-    const asset =
-      $slideshowNavigation === SlideshowNavigation.Shuffle
-        ? await assetStore.getRandomAsset()
-        : assetStore.buckets[0]?.dateGroups[0]?.intersetingAssets[0]?.asset;
-    if (asset) {
-      setAsset(asset);
-      $slideshowState = SlideshowState.PlaySlideshow;
-    }
   };
 
   const handleEscape = async () => {
@@ -697,16 +682,7 @@
               />
             {/if}
 
-            {#if isOwned}
-              <CircleIconButton
-                title={$t('share')}
-                onclick={() => (viewMode = AlbumPageViewMode.SELECT_USERS)}
-                icon={mdiShareVariantOutline}
-              />
-            {/if}
-
             {#if album.assetCount > 0}
-              <CircleIconButton title={$t('slideshow')} onclick={handleStartSlideshow} icon={mdiPresentationPlay} />
               <CircleIconButton title={$t('download')} onclick={handleDownloadAlbum} icon={mdiFolderDownloadOutline} />
               <CircleIconButton
                 title={showDurationSort && durationSortDirection === 'desc' ? $t('close') : $t('sort_by_duration')}
