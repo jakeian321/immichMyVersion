@@ -22,12 +22,11 @@
   import Icon from '$lib/components/elements/icon.svelte';
   import TagAssetForm from '$lib/components/forms/tag-asset-form.svelte';
   import Portal from '$lib/components/shared-components/portal/portal.svelte';
-  import { AppRoute } from '$lib/constants';
+  import { AppRoute, AssetAction } from '$lib/constants';
   import { isSharedLink } from '$lib/utils';
-  import { deleteAssets } from '$lib/utils/actions';
   import { removeTag, tagAssets } from '$lib/utils/asset-utils';
-  import { featureFlags } from '$lib/stores/server-config.store';
-  import { getAssetInfo, type AssetResponseDto, getAllTags, upsertTags } from '@immich/sdk';
+  import type { OnAction } from '$lib/components/asset-viewer/actions/action';
+  import { deleteAssets, getAssetInfo, type AssetResponseDto, getAllTags, upsertTags } from '@immich/sdk';
   import {
     mdiClose,
     mdiPlus,
@@ -60,6 +59,7 @@
     onVideoEnded?: () => void;
     onVideoStarted?: () => void;
     onClose?: () => void;
+    onAction?: OnAction;
   }
 
   let {
@@ -76,6 +76,7 @@
     onVideoEnded = () => {},
     onVideoStarted = () => {},
     onClose = () => {},
+    onAction = undefined,
   }: Props = $props();
 
   let { videoAutoplayDelayMs } = assetViewingStore;
@@ -189,13 +190,16 @@
     { id: 'preset-editing', value: 'editing' },
   ];
 
-  // one-tap shortcuts that select several preset tags at once
+  // one-tap shortcuts that select several preset tags at once; each is shown
+  // inline next to its anchorTag in the preset tag list
   const comboTags = [
-    { id: 'combo-tpr', label: 'TPR', tagValues: ['top', 'pose', 'recoil'] },
-    { id: 'combo-tpt', label: 'TPT', tagValues: ['top', 'pose', 'twerk'] },
-    { id: 'combo-tpw', label: 'TPW', tagValues: ['top', 'pose', 'wiggle'] },
-    { id: 'combo-tp', label: 'TP', tagValues: ['top', 'pose'] },
+    { id: 'combo-tpr', label: 'TPR', anchorTag: 'recoil', tagValues: ['top', 'pose', 'recoil'] },
+    { id: 'combo-tpt', label: 'TPT', anchorTag: 'twerk', tagValues: ['top', 'pose', 'twerk'] },
+    { id: 'combo-tpw', label: 'TPW', anchorTag: 'wiggle', tagValues: ['top', 'pose', 'wiggle'] },
+    { id: 'combo-tp', label: 'TP', anchorTag: 'pose', tagValues: ['top', 'pose'] },
   ];
+
+  const getComboTagForAnchor = (tagValue: string) => comboTags.find((combo) => combo.anchorTag === tagValue);
 
   let availableTagsMap = $state<Record<string, string>>({});
 
@@ -615,8 +619,13 @@
     }
 
     showFramePreview = false;
-    await deleteAssets(!$featureFlags.trash, () => {}, [asset.id]);
-    onClose();
+
+    try {
+      await deleteAssets({ assetBulkDeleteDto: { ids: [asset.id] } });
+      onAction?.({ type: AssetAction.TRASH, asset });
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_trash_asset'));
+    }
   };
 
   const jumpToFramePreview = (time: number) => {
@@ -1241,54 +1250,55 @@
       </div>
     {/if}
 
-    <!-- Preset Tag Buttons (moved closer to left edge) -->
+    <!-- Preset Tag Buttons (anchored below the eye icon / add-tag / progress bars / tags panel) -->
     {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && showTagElements}
-      <div class="z-[1001] fixed left-2 bottom-[20%]">
+      <div class="z-[1001] fixed left-2 top-[26%]">
         <div class="flex flex-col gap-1.5">
           {#each getVisiblePresetTags() as presetTag (presetTag.id)}
-            <button
-              type="button"
-              class={`px-2 py-1 rounded-lg text-white transition-all flex items-center gap-1 ${
-                checkTagSelected(presetTag.value)
-                  ? 'bg-immich-primary'
-                  : 'bg-black bg-opacity-40 hover:bg-immich-primary/50'
-              }`}
-              onclick={(event) => handleTagButtonClick(event, presetTag.value)}
-              disabled={checkTagProcessing(presetTag.value)}
-            >
-              <Icon path={mdiTag} size="0.6rem" />
-              <span class="text-xs font-medium">{presetTag.value}</span>
-              {#if checkTagProcessing(presetTag.value)}
-                <span class="ml-1 inline-block h-3 w-3">
-                  <LoadingSpinner size="xs" />
-                </span>
-              {/if}
-            </button>
-          {/each}
-
-          <div class="flex flex-row flex-wrap gap-1.5">
-            {#each comboTags as comboTag (comboTag.id)}
+            {@const comboTag = getComboTagForAnchor(presetTag.value)}
+            <div class="flex items-center gap-1.5">
               <button
                 type="button"
                 class={`px-2 py-1 rounded-lg text-white transition-all flex items-center gap-1 ${
-                  comboTag.tagValues.every((value) => checkTagSelected(value))
+                  checkTagSelected(presetTag.value)
                     ? 'bg-immich-primary'
                     : 'bg-black bg-opacity-40 hover:bg-immich-primary/50'
                 }`}
-                title={comboTag.tagValues.join(' + ')}
-                onclick={(event) => handleComboTagButtonClick(event, comboTag.tagValues)}
-                disabled={checkComboTagProcessing(comboTag.tagValues)}
+                onclick={(event) => handleTagButtonClick(event, presetTag.value)}
+                disabled={checkTagProcessing(presetTag.value)}
               >
-                <Icon path={mdiTagMultiple} size="0.6rem" />
-                <span class="text-xs font-medium">{comboTag.label}</span>
-                {#if checkComboTagProcessing(comboTag.tagValues)}
+                <Icon path={mdiTag} size="0.6rem" />
+                <span class="text-xs font-medium">{presetTag.value}</span>
+                {#if checkTagProcessing(presetTag.value)}
                   <span class="ml-1 inline-block h-3 w-3">
                     <LoadingSpinner size="xs" />
                   </span>
                 {/if}
               </button>
-            {/each}
-          </div>
+
+              {#if comboTag}
+                <button
+                  type="button"
+                  class={`px-2 py-1 rounded-lg text-white transition-all flex items-center gap-1 ${
+                    comboTag.tagValues.every((value) => checkTagSelected(value))
+                      ? 'bg-immich-primary'
+                      : 'bg-black bg-opacity-40 hover:bg-immich-primary/50'
+                  }`}
+                  title={comboTag.tagValues.join(' + ')}
+                  onclick={(event) => handleComboTagButtonClick(event, comboTag.tagValues)}
+                  disabled={checkComboTagProcessing(comboTag.tagValues)}
+                >
+                  <Icon path={mdiTagMultiple} size="0.6rem" />
+                  <span class="text-xs font-medium">{comboTag.label}</span>
+                  {#if checkComboTagProcessing(comboTag.tagValues)}
+                    <span class="ml-1 inline-block h-3 w-3">
+                      <LoadingSpinner size="xs" />
+                    </span>
+                  {/if}
+                </button>
+              {/if}
+            </div>
+          {/each}
         </div>
       </div>
     {/if}

@@ -2,6 +2,7 @@
   import { ProjectionType } from '$lib/constants';
   import VideoNativeViewer from '$lib/components/asset-viewer/video-native-viewer.svelte';
   import VideoPanoramaViewer from '$lib/components/asset-viewer/video-panorama-viewer.svelte';
+  import type { OnAction } from '$lib/components/asset-viewer/actions/action';
 
   interface Props {
     assetId: string;
@@ -13,6 +14,7 @@
     onNextAsset?: () => void;
     onVideoEnded?: () => void;
     onVideoStarted?: () => void;
+    onAction?: OnAction;
   }
 
   let {
@@ -25,6 +27,7 @@
     onNextAsset,
     onVideoEnded,
     onVideoStarted,
+    onAction,
   }: Props = $props();
 </script>
 
@@ -40,5 +43,6 @@
     {onVideoEnded}
     {onVideoStarted}
     {onClose}
+    {onAction}
   />
 {/if}

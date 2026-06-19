@@ -627,6 +627,7 @@
             onClose={closeViewer}
             onVideoEnded={() => navigateAsset()}
             onVideoStarted={handleVideoStarted}
+            onAction={handleAction}
           />
         {/if}
         {#if $slideshowState === SlideshowState.None && isShared && ((album && album.isActivityEnabled) || numberOfComments > 0)}
