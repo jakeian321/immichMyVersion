@@ -73,6 +73,7 @@
   } from '@immich/sdk';
   import {
     mdiArrowLeft,
+    mdiCalendarOutline,
     mdiClose,
     mdiCogOutline,
     mdiDeleteOutline,
@@ -148,9 +149,24 @@
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const durationSortViewport: Viewport = $state({ width: 0, height: 100_000 });
 
+  const FILENAME_DATE_SORT_LIMIT = 50;
+  // matches an 8-digit YYYYMMDD run in a filename, e.g. "... - 20240919 - ..." without
+  // matching into longer digit runs like a numeric post ID
+  const FILENAME_DATE_PATTERN = /(?<!\d)(\d{4})(\d{2})(\d{2})(?!\d)/;
+
+  let showFilenameDateSort = $state(false);
+  let isLoadingFilenameDateSort = $state(false);
+  let filenameDateSortedAssets: AssetResponseDto[] = $state([]);
+  let filenameDateSortAllAssets: AssetResponseDto[] = $state([]);
+  let filenameDateSortPage = $state(0);
+  // height is set arbitrarily large so GalleryViewer renders every asset instead of
+  // virtualizing based on window scroll position, which doesn't track this view's scroll container
+  const filenameDateSortViewport: Viewport = $state({ width: 0, height: 100_000 });
+
   const assetInteraction = new AssetInteraction();
   const timelineInteraction = new AssetInteraction();
   const durationSortInteraction = new AssetInteraction();
+  const filenameDateSortInteraction = new AssetInteraction();
 
   afterNavigate(({ from }) => {
     let url: string | undefined = from?.url?.pathname;
@@ -409,6 +425,67 @@
     durationSortedAssets = durationSortAllAssets.slice(
       durationSortPage * DURATION_SORT_LIMIT,
       (durationSortPage + 1) * DURATION_SORT_LIMIT,
+    );
+  };
+
+  const getFilenameDate = (filename: string): number | null => {
+    const match = filename.match(FILENAME_DATE_PATTERN);
+    if (!match) {
+      return null;
+    }
+
+    const [, year, month, day] = match;
+    const monthNum = Number(month);
+    const dayNum = Number(day);
+    if (monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31) {
+      return null;
+    }
+
+    const timestamp = new Date(Number(year), monthNum - 1, dayNum).getTime();
+    return Number.isNaN(timestamp) ? null : timestamp;
+  };
+
+  const sortByFilenameDate = (assets: AssetResponseDto[]) =>
+    assets
+      .map((asset) => ({ asset, date: getFilenameDate(asset.originalFileName) }))
+      .filter((entry): entry is { asset: AssetResponseDto; date: number } => entry.date !== null)
+      .sort((a, b) => b.date - a.date)
+      .map((entry) => entry.asset);
+
+  const toggleFilenameDateSort = async () => {
+    if (showFilenameDateSort) {
+      showFilenameDateSort = false;
+      cancelMultiselect(filenameDateSortInteraction);
+      return;
+    }
+
+    showFilenameDateSort = true;
+    isLoadingFilenameDateSort = true;
+    filenameDateSortedAssets = [];
+    filenameDateSortAllAssets = [];
+    filenameDateSortPage = 0;
+
+    try {
+      const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
+      filenameDateSortAllAssets = sortByFilenameDate(fullAlbum.assets);
+      filenameDateSortedAssets = filenameDateSortAllAssets.slice(0, FILENAME_DATE_SORT_LIMIT);
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_load_album'));
+      showFilenameDateSort = false;
+    } finally {
+      isLoadingFilenameDateSort = false;
+    }
+  };
+
+  const hasMoreFilenameDateSortedAssets = $derived(
+    (filenameDateSortPage + 1) * FILENAME_DATE_SORT_LIMIT < filenameDateSortAllAssets.length,
+  );
+
+  const loadNextFilenameDateSortPage = () => {
+    filenameDateSortPage += 1;
+    filenameDateSortedAssets = filenameDateSortAllAssets.slice(
+      filenameDateSortPage * FILENAME_DATE_SORT_LIMIT,
+      (filenameDateSortPage + 1) * FILENAME_DATE_SORT_LIMIT,
     );
   };
 
@@ -692,6 +769,12 @@
                 icon={showDurationSort && durationSortDirection === 'asc' ? mdiClose : mdiSortClockAscendingOutline}
                 color={showDurationSort && durationSortDirection === 'asc' ? 'primary' : undefined}
               />
+              <CircleIconButton
+                title={showFilenameDateSort ? $t('close') : $t('sort_by_filename_date')}
+                onclick={toggleFilenameDateSort}
+                icon={showFilenameDateSort ? mdiClose : mdiCalendarOutline}
+                color={showFilenameDateSort ? 'primary' : undefined}
+              />
 
               {#if isOwned}
                 <CircleIconButton
@@ -846,9 +929,31 @@
             {/if}
           {/if}
         </section>
+      {:else if showFilenameDateSort}
+        <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={filenameDateSortViewport.width}>
+          {#if isLoadingFilenameDateSort}
+            <div class="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+          {:else}
+            <GalleryViewer
+              bind:assets={filenameDateSortedAssets}
+              assetInteraction={filenameDateSortInteraction}
+              viewport={filenameDateSortViewport}
+            />
+            {#if hasMoreFilenameDateSortedAssets}
+              <div class="flex justify-center pb-4">
+                <Button onclick={loadNextFilenameDateSortPage}>{$t('next')}</Button>
+              </div>
+            {/if}
+          {/if}
+        </section>
       {/if}
 
-      <div class:hidden={albumSearchActive || globalSearchActive || showDurationSort} class="h-full">
+      <div
+        class:hidden={albumSearchActive || globalSearchActive || showDurationSort || showFilenameDateSort}
+        class="h-full"
+      >
         <AssetGrid
           enableRouting={viewMode === AlbumPageViewMode.SELECT_ASSETS ? false : true}
           {album}
