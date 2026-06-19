@@ -198,12 +198,15 @@
     { id: 'combo-tps', label: 'TPS', anchorTag: 'spin', tagValues: ['top', 'pose', 'spin'] },
     { id: 'combo-tpl', label: 'TPL', anchorTag: 'lay', tagValues: ['top', 'pose', 'lay'] },
     { id: 'combo-tpa', label: 'TPA', anchorTag: 'ahegao', tagValues: ['top', 'pose', 'ahegao'] },
-    { id: 'combo-tpto', label: 'TPTO', anchorTag: 'tongue', tagValues: ['top', 'pose', 'tongue'] },
+    { id: 'combo-tpto', label: 'TPTo', anchorTag: 'tongue', tagValues: ['top', 'pose', 'tongue'] },
     { id: 'combo-tpb', label: 'TPB', anchorTag: 'bikini', tagValues: ['top', 'pose', 'bikini'] },
     { id: 'combo-tpf', label: 'TPF', anchorTag: 'face', tagValues: ['top', 'pose', 'face'] },
-    { id: 'combo-tpsi', label: 'TPSI', anchorTag: 'side', tagValues: ['top', 'pose', 'side'] },
-    { id: 'combo-tpti', label: 'TPTI', anchorTag: 'tit', tagValues: ['top', 'pose', 'tit'] },
+    { id: 'combo-tpsi', label: 'TPSi', anchorTag: 'side', tagValues: ['top', 'pose', 'side'] },
+    { id: 'combo-tpti', label: 'TPTi', anchorTag: 'tit', tagValues: ['top', 'pose', 'tit'] },
     { id: 'combo-tpm', label: 'TPM', anchorTag: 'milf', tagValues: ['top', 'pose', 'milf'] },
+    { id: 'combo-tppo', label: 'TPPo', anchorTag: 'pose2', tagValues: ['top', 'pose', 'pose2'] },
+    { id: 'combo-tpbo', label: 'TPBo', anchorTag: 'body', tagValues: ['top', 'pose', 'body'] },
+    { id: 'combo-tpwa', label: 'TPWa', anchorTag: 'walk', tagValues: ['top', 'pose', 'walk'] },
   ];
 
   const getComboTagForAnchor = (tagValue: string) => comboTags.find((combo) => combo.anchorTag === tagValue);
@@ -1150,7 +1153,7 @@
 
     <!-- Frame Preview Button -->
     {#if !isZoomed}
-      <div class="z-[1001] fixed left-12 top-[18%]">
+      <div class="z-[1001] fixed left-12 top-[16%]">
         <button
           type="button"
           class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
@@ -1213,7 +1216,7 @@
 
     <!-- Add Tag Button -->
     {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
-      <div class="z-[1001] fixed left-0 top-[18%]">
+      <div class="z-[1001] fixed left-0 top-[16%]">
         <button
           type="button"
           class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
@@ -1259,7 +1262,7 @@
 
     <!-- Preset Tag Buttons (anchored below the eye icon / add-tag / progress bars / tags panel) -->
     {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && showTagElements}
-      <div class="z-[1001] fixed left-2 top-[24%]">
+      <div class="z-[1001] fixed left-2 top-[22%]">
         <div class="flex flex-col gap-1.5">
           {#each getVisiblePresetTags() as presetTag (presetTag.id)}
             {@const comboTag = getComboTagForAnchor(presetTag.value)}
