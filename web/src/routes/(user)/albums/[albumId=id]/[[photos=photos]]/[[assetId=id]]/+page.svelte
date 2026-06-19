@@ -41,7 +41,7 @@
   import { AssetStore, type Viewport } from '$lib/stores/assets-store.svelte';
   import { preferences, user } from '$lib/stores/user.store';
   import { handlePromiseError } from '$lib/utils';
-  import { downloadAlbum, cancelMultiselect } from '$lib/utils/asset-utils';
+  import { cancelMultiselect } from '$lib/utils/asset-utils';
   import { timeToSeconds } from '$lib/utils/date-time';
   import { openFileUploadDialog } from '$lib/utils/file-uploader';
   import { handleError } from '$lib/utils/handle-error';
@@ -77,7 +77,6 @@
     mdiCogOutline,
     mdiDeleteOutline,
     mdiDotsVertical,
-    mdiFolderDownloadOutline,
     mdiImageOutline,
     mdiImagePlusOutline,
     mdiLink,
@@ -355,10 +354,6 @@
     } catch (error) {
       handleError(error, $t('errors.error_deleting_shared_user'));
     }
-  };
-
-  const handleDownloadAlbum = async () => {
-    await downloadAlbum(album);
   };
 
   const sortByDuration = (assets: AssetResponseDto[], direction: 'desc' | 'asc') =>
@@ -683,7 +678,6 @@
             {/if}
 
             {#if album.assetCount > 0}
-              <CircleIconButton title={$t('download')} onclick={handleDownloadAlbum} icon={mdiFolderDownloadOutline} />
               <CircleIconButton
                 title={showDurationSort && durationSortDirection === 'desc' ? $t('close') : $t('sort_by_duration')}
                 onclick={() => toggleDurationSort('desc')}
