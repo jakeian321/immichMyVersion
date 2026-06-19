@@ -85,6 +85,7 @@ export const mapSettings = persistedObject<MapSettings>('map-settings', defaultM
 
 export const videoViewerVolume = persisted<number>('video-viewer-volume', 1, {});
 export const videoViewerMuted = persisted<boolean>('video-viewer-muted', false, {});
+export const videoZoomedOut = persisted<boolean>('video-zoomed-out', false, {});
 
 export const isShowDetail = persisted<boolean>('info-opened', false, {});
 

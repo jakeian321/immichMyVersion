@@ -1,6 +1,11 @@
 <script lang="ts">
   import LoadingSpinner from '$lib/components/shared-components/loading-spinner.svelte';
-  import { loopVideo as loopVideoPreference, videoViewerMuted, videoViewerVolume } from '$lib/stores/preferences.store';
+  import {
+    loopVideo as loopVideoPreference,
+    videoViewerMuted,
+    videoViewerVolume,
+    videoZoomedOut,
+  } from '$lib/stores/preferences.store';
   import { getAssetPlaybackUrl, getAssetThumbnailUrl } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
   import { AssetMediaSize } from '@immich/sdk';
@@ -150,8 +155,6 @@
 
   let hasReachedTagDisplayThreshold = $state(false);
   const TAG_DISPLAY_THRESHOLD = 0.9;
-
-  let showTokTags = $state(false);
 
   const presetTags = [
     { id: 'preset-low', value: 'low' },
@@ -825,19 +828,13 @@
     showTagElements = !showTagElements;
   };
 
-  const toggleTokTagsVisibility = () => {
-    showTokTags = !showTokTags;
+  const toggleVideoZoom = () => {
+    $videoZoomedOut = !$videoZoomedOut;
   };
 
   const getVisiblePresetTags = () => {
     const tokTags = ['lowTOK', 'semiTOK', 'topTOK'];
-    const regularTags = ['low', 'semitop', 'top'];
-
-    if (showTokTags) {
-      return presetTags.filter((tag) => !regularTags.includes(tag.value));
-    } else {
-      return presetTags.filter((tag) => !tokTags.includes(tag.value));
-    }
+    return presetTags.filter((tag) => !tokTags.includes(tag.value));
   };
 
   const saveCurrentTagSelection = () => {
@@ -1062,7 +1059,9 @@
       autoplay
       playsinline
       webkit-playsinline="true"
-      class="h-full w-full object-cover max-h-screen transition-transform duration-100"
+      class="h-full w-full {$videoZoomedOut
+        ? 'object-contain'
+        : 'object-cover'} max-h-screen transition-transform duration-100"
       style={`transform: ${getTransformStyle()}`}
       use:swipe={() => ({})}
       onswipe={onSwipe}
@@ -1313,16 +1312,16 @@
       </div>
     {/if}
 
-    <!-- TOK/REG Toggle Button -->
-    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+    <!-- Video Zoom In/Out Toggle Button -->
+    {#if !isZoomed}
       <div class="z-[1001] fixed right-2 bottom-2">
         <button
           type="button"
           class="bg-black bg-opacity-40 text-white rounded-full px-2 py-1 hover:bg-opacity-60 transition-all"
-          title={showTokTags ? 'Switch to Regular Tags' : 'Switch to TOK Tags'}
-          onclick={toggleTokTagsVisibility}
+          title={$videoZoomedOut ? 'Zoom In' : 'Zoom Out'}
+          onclick={toggleVideoZoom}
         >
-          <span class="text-[10px] font-medium">{showTokTags ? 'REG' : 'TOK'}</span>
+          <span class="text-[10px] font-medium">{$videoZoomedOut ? 'IN' : 'OUT'}</span>
         </button>
       </div>
     {/if}
