@@ -73,7 +73,6 @@
   } from '@immich/sdk';
   import {
     mdiArrowLeft,
-    mdiCalendarOutline,
     mdiClose,
     mdiCogOutline,
     mdiDeleteOutline,
@@ -82,6 +81,8 @@
     mdiImagePlusOutline,
     mdiLink,
     mdiPlus,
+    mdiSortCalendarAscending,
+    mdiSortCalendarDescending,
     mdiSortClockAscendingOutline,
     mdiSortClockDescendingOutline,
   } from '@mdi/js';
@@ -155,6 +156,7 @@
   const FILENAME_DATE_PATTERN = /(?<!\d)(\d{4})(\d{2})(\d{2})(?!\d)/;
 
   let showFilenameDateSort = $state(false);
+  let filenameDateSortDirection: 'desc' | 'asc' = $state('desc');
   let isLoadingFilenameDateSort = $state(false);
   let filenameDateSortedAssets: AssetResponseDto[] = $state([]);
   let filenameDateSortAllAssets: AssetResponseDto[] = $state([]);
@@ -445,17 +447,27 @@
     return Number.isNaN(timestamp) ? null : timestamp;
   };
 
-  const sortByFilenameDate = (assets: AssetResponseDto[]) =>
+  const sortByFilenameDate = (assets: AssetResponseDto[], direction: 'desc' | 'asc') =>
     assets
       .map((asset) => ({ asset, date: getFilenameDate(asset.originalFileName) }))
       .filter((entry): entry is { asset: AssetResponseDto; date: number } => entry.date !== null)
-      .sort((a, b) => b.date - a.date)
+      .sort((a, b) => (direction === 'desc' ? b.date - a.date : a.date - b.date))
       .map((entry) => entry.asset);
 
-  const toggleFilenameDateSort = async () => {
-    if (showFilenameDateSort) {
+  const toggleFilenameDateSort = async (direction: 'desc' | 'asc') => {
+    if (showFilenameDateSort && filenameDateSortDirection === direction) {
       showFilenameDateSort = false;
       cancelMultiselect(filenameDateSortInteraction);
+      return;
+    }
+
+    filenameDateSortDirection = direction;
+
+    if (showFilenameDateSort) {
+      cancelMultiselect(filenameDateSortInteraction);
+      filenameDateSortPage = 0;
+      filenameDateSortAllAssets = sortByFilenameDate(filenameDateSortAllAssets, direction);
+      filenameDateSortedAssets = filenameDateSortAllAssets.slice(0, FILENAME_DATE_SORT_LIMIT);
       return;
     }
 
@@ -467,7 +479,7 @@
 
     try {
       const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
-      filenameDateSortAllAssets = sortByFilenameDate(fullAlbum.assets);
+      filenameDateSortAllAssets = sortByFilenameDate(fullAlbum.assets, direction);
       filenameDateSortedAssets = filenameDateSortAllAssets.slice(0, FILENAME_DATE_SORT_LIMIT);
     } catch (error) {
       handleError(error, $t('errors.unable_to_load_album'));
@@ -770,10 +782,22 @@
                 color={showDurationSort && durationSortDirection === 'asc' ? 'primary' : undefined}
               />
               <CircleIconButton
-                title={showFilenameDateSort ? $t('close') : $t('sort_by_filename_date')}
-                onclick={toggleFilenameDateSort}
-                icon={showFilenameDateSort ? mdiClose : mdiCalendarOutline}
-                color={showFilenameDateSort ? 'primary' : undefined}
+                title={showFilenameDateSort && filenameDateSortDirection === 'desc'
+                  ? $t('close')
+                  : $t('sort_by_filename_date')}
+                onclick={() => toggleFilenameDateSort('desc')}
+                icon={showFilenameDateSort && filenameDateSortDirection === 'desc'
+                  ? mdiClose
+                  : mdiSortCalendarDescending}
+                color={showFilenameDateSort && filenameDateSortDirection === 'desc' ? 'primary' : undefined}
+              />
+              <CircleIconButton
+                title={showFilenameDateSort && filenameDateSortDirection === 'asc'
+                  ? $t('close')
+                  : $t('sort_by_filename_date_ascending')}
+                onclick={() => toggleFilenameDateSort('asc')}
+                icon={showFilenameDateSort && filenameDateSortDirection === 'asc' ? mdiClose : mdiSortCalendarAscending}
+                color={showFilenameDateSort && filenameDateSortDirection === 'asc' ? 'primary' : undefined}
               />
 
               {#if isOwned}

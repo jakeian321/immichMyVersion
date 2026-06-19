@@ -1246,6 +1246,7 @@
   "sort_by_duration": "Sort by duration",
   "sort_by_duration_ascending": "Sort by duration (shortest first)",
   "sort_by_filename_date": "Sort by date in filename",
+  "sort_by_filename_date_ascending": "Sort by date in filename (oldest first)",
   "sort_created": "Date created",
   "sort_items": "Number of items",
   "sort_modified": "Date modified",
