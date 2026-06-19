@@ -8,9 +8,14 @@ function createAssetViewingStore() {
   const preloadAssets = writable<AssetResponseDto[]>([]);
   const viewState = writable<boolean>(false);
   const gridScrollTarget = writable<AssetGridRouteSearchParams | null | undefined>();
+  // extra delay before a video starts playing, used by non-virtualized grids (e.g. the
+  // album page's duration/filename-date sort views) where many assets stay mounted at once
+  // and can otherwise starve the viewer's video of decode resources right at playback start
+  const videoAutoplayDelayMs = writable<number>(0);
 
-  const setAsset = (asset: AssetResponseDto, assetsToPreload: AssetResponseDto[] = []) => {
+  const setAsset = (asset: AssetResponseDto, assetsToPreload: AssetResponseDto[] = [], autoplayDelayMs = 0) => {
     preloadAssets.set(assetsToPreload);
+    videoAutoplayDelayMs.set(autoplayDelayMs);
     viewingAssetStoreState.set(asset);
     viewState.set(true);
   };
@@ -30,6 +35,7 @@ function createAssetViewingStore() {
     preloadAssets: readonly(preloadAssets),
     isViewing: viewState,
     gridScrollTarget,
+    videoAutoplayDelayMs: readonly(videoAutoplayDelayMs),
     setAsset,
     setAssetId,
     showAssetViewer,

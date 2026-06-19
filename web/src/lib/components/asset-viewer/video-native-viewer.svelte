@@ -1,5 +1,6 @@
 <script lang="ts">
   import LoadingSpinner from '$lib/components/shared-components/loading-spinner.svelte';
+  import { assetViewingStore } from '$lib/stores/asset-viewing.store';
   import {
     loopVideo as loopVideoPreference,
     videoViewerMuted,
@@ -72,6 +73,8 @@
     onVideoStarted = () => {},
     onClose = () => {},
   }: Props = $props();
+
+  let { videoAutoplayDelayMs } = assetViewingStore;
 
   let videoPlayer: HTMLVideoElement | undefined = $state();
   let videoContainer: HTMLDivElement | undefined = $state();
@@ -274,6 +277,14 @@
 
   const handleCanPlay = async (video: HTMLVideoElement) => {
     try {
+      const delayMs = $videoAutoplayDelayMs;
+      if (delayMs > 0) {
+        // give a non-virtualized grid's other mounted assets a moment to settle before
+        // starting decode on this video, instead of competing with them from frame one
+        video.pause();
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+
       await video.play();
       isPlaying = true;
       onVideoStarted();

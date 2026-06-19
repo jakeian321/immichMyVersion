@@ -37,6 +37,7 @@
     onRandom?: (() => Promise<AssetResponseDto | undefined>) | undefined;
     pageHeaderOffset?: number;
     slidingWindowOffset?: number;
+    videoAutoplayDelayMs?: number;
   }
 
   let {
@@ -53,6 +54,7 @@
     onRandom = undefined,
     slidingWindowOffset = 0,
     pageHeaderOffset = 0,
+    videoAutoplayDelayMs = 0,
   }: Props = $props();
 
   let { isViewing: isViewerOpen, asset: viewingAsset, setAsset } = assetViewingStore;
@@ -140,7 +142,7 @@
   });
   const viewAssetHandler = async (asset: AssetResponseDto) => {
     currentViewAssetIndex = assets.findIndex((a) => a.id == asset.id);
-    setAsset(assets[currentViewAssetIndex]);
+    setAsset(assets[currentViewAssetIndex], [], videoAutoplayDelayMs);
     await navigate({ targetRoute: 'current', assetId: $viewingAsset.id });
   };
 
@@ -385,7 +387,7 @@
 
   const navigateToAsset = async (asset?: AssetResponseDto) => {
     if (asset && asset.id !== $viewingAsset.id) {
-      setAsset(asset);
+      setAsset(asset, [], videoAutoplayDelayMs);
       await navigate({ targetRoute: 'current', assetId: $viewingAsset.id });
     }
   };
@@ -404,7 +406,7 @@
         } else if (currentViewAssetIndex === assets.length) {
           await handlePrevious();
         } else {
-          setAsset(assets[currentViewAssetIndex]);
+          setAsset(assets[currentViewAssetIndex], [], videoAutoplayDelayMs);
         }
         break;
       }

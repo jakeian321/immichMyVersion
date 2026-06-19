@@ -139,6 +139,10 @@
   let albumOrder: AssetOrder | undefined = $state(data.album.order);
 
   const DURATION_SORT_LIMIT = 50;
+  // these sort views render every asset at once (no virtualization), so on open or when
+  // navigating between assets, give the video player a moment to settle before autoplaying
+  // instead of competing with everything else still mounted for decode resources
+  const VIDEO_AUTOPLAY_DELAY_MS = 600;
 
   let showDurationSort = $state(false);
   let durationSortDirection: 'desc' | 'asc' = $state('desc');
@@ -945,6 +949,7 @@
               bind:assets={durationSortedAssets}
               assetInteraction={durationSortInteraction}
               viewport={durationSortViewport}
+              videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
             />
             {#if hasMoreDurationSortedAssets}
               <div class="flex justify-center pb-4">
@@ -964,6 +969,7 @@
               bind:assets={filenameDateSortedAssets}
               assetInteraction={filenameDateSortInteraction}
               viewport={filenameDateSortViewport}
+              videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
             />
             {#if hasMoreFilenameDateSortedAssets}
               <div class="flex justify-center pb-4">
