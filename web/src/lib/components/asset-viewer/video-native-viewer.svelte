@@ -24,12 +24,15 @@
   import Portal from '$lib/components/shared-components/portal/portal.svelte';
   import { AppRoute } from '$lib/constants';
   import { isSharedLink } from '$lib/utils';
+  import { deleteAssets } from '$lib/utils/actions';
   import { removeTag, tagAssets } from '$lib/utils/asset-utils';
+  import { featureFlags } from '$lib/stores/server-config.store';
   import { getAssetInfo, type AssetResponseDto, getAllTags, upsertTags } from '@immich/sdk';
   import {
     mdiClose,
     mdiPlus,
     mdiTag,
+    mdiTagMultiple,
     mdiEyeOff,
     mdiEye,
     mdiMagnifyMinusOutline,
@@ -40,6 +43,7 @@
     mdiBookmark,
     mdiBookmarkOutline,
     mdiFilmstrip,
+    mdiDeleteOutline,
   } from '@mdi/js';
 
   interface Props {
@@ -185,6 +189,14 @@
     { id: 'preset-editing', value: 'editing' },
   ];
 
+  // one-tap shortcuts that select several preset tags at once
+  const comboTags = [
+    { id: 'combo-tpr', label: 'TPR', tagValues: ['top', 'pose', 'recoil'] },
+    { id: 'combo-tpt', label: 'TPT', tagValues: ['top', 'pose', 'twerk'] },
+    { id: 'combo-tpw', label: 'TPW', tagValues: ['top', 'pose', 'wiggle'] },
+    { id: 'combo-tp', label: 'TP', tagValues: ['top', 'pose'] },
+  ];
+
   let availableTagsMap = $state<Record<string, string>>({});
 
   let selectedPresetTags = $state<string[]>([]);
@@ -212,6 +224,10 @@
 
   const checkTagProcessing = (tagValue: string): boolean => {
     return processingTagIds.includes(tagValue.toLowerCase());
+  };
+
+  const checkComboTagProcessing = (tagValues: string[]): boolean => {
+    return tagValues.some((tagValue) => checkTagProcessing(tagValue));
   };
 
   const initializeTags = async () => {
@@ -593,6 +609,16 @@
     }
   };
 
+  const handleTrashFromFramePreview = async () => {
+    if (!asset?.id) {
+      return;
+    }
+
+    showFramePreview = false;
+    await deleteAssets(!$featureFlags.trash, () => {}, [asset.id]);
+    onClose();
+  };
+
   const jumpToFramePreview = (time: number) => {
     if (videoPlayer) {
       videoPlayer.currentTime = time;
@@ -731,6 +757,17 @@
     }
 
     return success;
+  };
+
+  const handleComboTagButtonClick = async (event: MouseEvent, tagValues: string[]) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+
+    for (const tagValue of tagValues) {
+      if (!checkTagSelected(tagValue)) {
+        await applyTagToAsset(tagValue);
+      }
+    }
   };
 
   const handleTagButtonClick = (event: MouseEvent, tagValue: string) => {
@@ -1207,7 +1244,7 @@
     <!-- Preset Tag Buttons (moved closer to left edge) -->
     {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && showTagElements}
       <div class="z-[1001] fixed left-2 bottom-[20%]">
-        <div class="flex flex-col gap-1">
+        <div class="flex flex-col gap-1.5">
           {#each getVisiblePresetTags() as presetTag (presetTag.id)}
             <button
               type="button"
@@ -1228,6 +1265,30 @@
               {/if}
             </button>
           {/each}
+
+          <div class="flex flex-row flex-wrap gap-1.5">
+            {#each comboTags as comboTag (comboTag.id)}
+              <button
+                type="button"
+                class={`px-2 py-1 rounded-lg text-white transition-all flex items-center gap-1 ${
+                  comboTag.tagValues.every((value) => checkTagSelected(value))
+                    ? 'bg-immich-primary'
+                    : 'bg-black bg-opacity-40 hover:bg-immich-primary/50'
+                }`}
+                title={comboTag.tagValues.join(' + ')}
+                onclick={(event) => handleComboTagButtonClick(event, comboTag.tagValues)}
+                disabled={checkComboTagProcessing(comboTag.tagValues)}
+              >
+                <Icon path={mdiTagMultiple} size="0.6rem" />
+                <span class="text-xs font-medium">{comboTag.label}</span>
+                {#if checkComboTagProcessing(comboTag.tagValues)}
+                  <span class="ml-1 inline-block h-3 w-3">
+                    <LoadingSpinner size="xs" />
+                  </span>
+                {/if}
+              </button>
+            {/each}
+          </div>
         </div>
       </div>
     {/if}
@@ -1338,7 +1399,12 @@
       <Portal>
         <div class="fixed inset-0 z-[9999] flex flex-col bg-black bg-opacity-90 p-2">
           <div class="flex items-center justify-between px-1">
-            <h2 class="text-lg text-white">{$t('frame_preview')}</h2>
+            <div class="flex items-center gap-1">
+              <button type="button" class="text-white p-2" title={$t('trash')} onclick={handleTrashFromFramePreview}>
+                <Icon path={mdiDeleteOutline} size="1.5rem" />
+              </button>
+              <h2 class="text-lg text-white">{$t('frame_preview')}</h2>
+            </div>
             <button type="button" class="text-white p-2" title={$t('close')} onclick={closeFramePreview}>
               <Icon path={mdiClose} size="1.5rem" />
             </button>
