@@ -22,10 +22,9 @@
   import Icon from '$lib/components/elements/icon.svelte';
   import TagAssetForm from '$lib/components/forms/tag-asset-form.svelte';
   import Portal from '$lib/components/shared-components/portal/portal.svelte';
-  import { AppRoute, AssetAction } from '$lib/constants';
+  import { AppRoute } from '$lib/constants';
   import { isSharedLink } from '$lib/utils';
   import { removeTag, tagAssets } from '$lib/utils/asset-utils';
-  import type { OnAction } from '$lib/components/asset-viewer/actions/action';
   import { deleteAssets, getAssetInfo, type AssetResponseDto, getAllTags, upsertTags } from '@immich/sdk';
   import {
     mdiClose,
@@ -59,7 +58,6 @@
     onVideoEnded?: () => void;
     onVideoStarted?: () => void;
     onClose?: () => void;
-    onAction?: OnAction;
   }
 
   let {
@@ -76,7 +74,6 @@
     onVideoEnded = () => {},
     onVideoStarted = () => {},
     onClose = () => {},
-    onAction = undefined,
   }: Props = $props();
 
   let { videoAutoplayDelayMs } = assetViewingStore;
@@ -179,6 +176,7 @@
     { id: 'preset-pose2', value: 'pose2' },
     { id: 'preset-side', value: 'side' },
     { id: 'preset-lay', value: 'lay' },
+    { id: 'preset-body', value: 'body' },
     { id: 'preset-spin', value: 'spin' },
     { id: 'preset-ass', value: 'ass' },
     { id: 'preset-walk', value: 'walk' },
@@ -197,6 +195,15 @@
     { id: 'combo-tpt', label: 'TPT', anchorTag: 'twerk', tagValues: ['top', 'pose', 'twerk'] },
     { id: 'combo-tpw', label: 'TPW', anchorTag: 'wiggle', tagValues: ['top', 'pose', 'wiggle'] },
     { id: 'combo-tp', label: 'TP', anchorTag: 'pose', tagValues: ['top', 'pose'] },
+    { id: 'combo-tps', label: 'TPS', anchorTag: 'spin', tagValues: ['top', 'pose', 'spin'] },
+    { id: 'combo-tpl', label: 'TPL', anchorTag: 'lay', tagValues: ['top', 'pose', 'lay'] },
+    { id: 'combo-tpa', label: 'TPA', anchorTag: 'ahegao', tagValues: ['top', 'pose', 'ahegao'] },
+    { id: 'combo-tpto', label: 'TPTO', anchorTag: 'tongue', tagValues: ['top', 'pose', 'tongue'] },
+    { id: 'combo-tpb', label: 'TPB', anchorTag: 'bikini', tagValues: ['top', 'pose', 'bikini'] },
+    { id: 'combo-tpf', label: 'TPF', anchorTag: 'face', tagValues: ['top', 'pose', 'face'] },
+    { id: 'combo-tpsi', label: 'TPSI', anchorTag: 'side', tagValues: ['top', 'pose', 'side'] },
+    { id: 'combo-tpti', label: 'TPTI', anchorTag: 'tit', tagValues: ['top', 'pose', 'tit'] },
+    { id: 'combo-tpm', label: 'TPM', anchorTag: 'milf', tagValues: ['top', 'pose', 'milf'] },
   ];
 
   const getComboTagForAnchor = (tagValue: string) => comboTags.find((combo) => combo.anchorTag === tagValue);
@@ -622,7 +629,7 @@
 
     try {
       await deleteAssets({ assetBulkDeleteDto: { ids: [asset.id] } });
-      onAction?.({ type: AssetAction.TRASH, asset });
+      onNextAsset();
     } catch (error) {
       handleError(error, $t('errors.unable_to_trash_asset'));
     }
@@ -1143,7 +1150,7 @@
 
     <!-- Frame Preview Button -->
     {#if !isZoomed}
-      <div class="z-[1001] fixed left-24 top-[18%]">
+      <div class="z-[1001] fixed left-12 top-[18%]">
         <button
           type="button"
           class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
@@ -1206,7 +1213,7 @@
 
     <!-- Add Tag Button -->
     {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
-      <div class="z-[1001] fixed left-12 top-[18%]">
+      <div class="z-[1001] fixed left-0 top-[18%]">
         <button
           type="button"
           class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
@@ -1252,7 +1259,7 @@
 
     <!-- Preset Tag Buttons (anchored below the eye icon / add-tag / progress bars / tags panel) -->
     {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && showTagElements}
-      <div class="z-[1001] fixed left-2 top-[26%]">
+      <div class="z-[1001] fixed left-2 top-[24%]">
         <div class="flex flex-col gap-1.5">
           {#each getVisiblePresetTags() as presetTag (presetTag.id)}
             {@const comboTag = getComboTagForAnchor(presetTag.value)}
