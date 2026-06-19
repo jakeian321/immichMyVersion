@@ -463,7 +463,7 @@
   <ShowShortcuts onClose={() => (showShortcuts = !showShortcuts)} />
 {/if}
 
-{#if assets.length > 0}
+{#if assets.length > 0 && !$isViewerOpen}
   <div
     style:position="relative"
     style:height={assetLayouts.containerHeight + 'px'}
