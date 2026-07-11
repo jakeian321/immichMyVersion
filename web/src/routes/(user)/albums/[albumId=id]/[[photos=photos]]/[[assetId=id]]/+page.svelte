@@ -1,6 +1,7 @@
 <script lang="ts">
   import { afterNavigate, goto, onNavigate } from '$app/navigation';
   import { scrollMemoryClearer } from '$lib/actions/scroll-memory';
+  import AddToCollectionsModal from '$lib/components/album-page/add-to-collections-modal.svelte';
   import AlbumDescription from '$lib/components/album-page/album-description.svelte';
   import AlbumOptions from '$lib/components/album-page/album-options.svelte';
   import AlbumSummary from '$lib/components/album-page/album-summary.svelte';
@@ -77,6 +78,7 @@
     mdiCogOutline,
     mdiDeleteOutline,
     mdiDotsVertical,
+    mdiFolderMultiplePlusOutline,
     mdiImageOutline,
     mdiImagePlusOutline,
     mdiLink,
@@ -90,13 +92,14 @@
   import type { PageData } from './$types';
   import { t } from 'svelte-i18n';
   import { onDestroy } from 'svelte';
-  import { confirmAlbumDelete } from '$lib/utils/album-utils';
+  import { confirmAlbumDelete, isCollectionAlbum } from '$lib/utils/album-utils';
   import TagAction from '$lib/components/photos-page/actions/tag-action.svelte';
   import { AssetInteraction } from '$lib/stores/asset-interaction.svelte';
   import { organizeAlbumByTags } from '$lib/utils/tag-organization';
   import { mdiAutoFix } from '@mdi/js'; // or any icon you prefer
 
   let isOrganizing = $state(false);
+  let isShowingCollectionsModal = $state(false);
 
   import FilterBar from '$lib/components/shared-components/filter-bar.svelte';
 
@@ -524,7 +527,9 @@
   };
 
   const handleOrganizeByTags = async () => {
-    if (isOrganizing) return;
+    if (isOrganizing) {
+      return;
+    }
 
     isOrganizing = true;
     try {
@@ -767,6 +772,8 @@
                   );
                 }}
                 icon={mdiImagePlusOutline}
+                size="20"
+                padding="2"
               />
             {/if}
 
@@ -776,6 +783,8 @@
                 onclick={() => toggleDurationSort('desc')}
                 icon={showDurationSort && durationSortDirection === 'desc' ? mdiClose : mdiSortClockDescendingOutline}
                 color={showDurationSort && durationSortDirection === 'desc' ? 'primary' : undefined}
+                size="20"
+                padding="2"
               />
               <CircleIconButton
                 title={showDurationSort && durationSortDirection === 'asc'
@@ -784,6 +793,8 @@
                 onclick={() => toggleDurationSort('asc')}
                 icon={showDurationSort && durationSortDirection === 'asc' ? mdiClose : mdiSortClockAscendingOutline}
                 color={showDurationSort && durationSortDirection === 'asc' ? 'primary' : undefined}
+                size="20"
+                padding="2"
               />
               <CircleIconButton
                 title={showFilenameDateSort && filenameDateSortDirection === 'desc'
@@ -794,6 +805,8 @@
                   ? mdiClose
                   : mdiSortCalendarDescending}
                 color={showFilenameDateSort && filenameDateSortDirection === 'desc' ? 'primary' : undefined}
+                size="20"
+                padding="2"
               />
               <CircleIconButton
                 title={showFilenameDateSort && filenameDateSortDirection === 'asc'
@@ -802,6 +815,8 @@
                 onclick={() => toggleFilenameDateSort('asc')}
                 icon={showFilenameDateSort && filenameDateSortDirection === 'asc' ? mdiClose : mdiSortCalendarAscending}
                 color={showFilenameDateSort && filenameDateSortDirection === 'asc' ? 'primary' : undefined}
+                size="20"
+                padding="2"
               />
 
               {#if isOwned}
@@ -810,12 +825,24 @@
                   onclick={handleOrganizeByTags}
                   icon={mdiAutoFix}
                   disabled={isOrganizing}
+                  size="20"
+                  padding="2"
                 />
               {/if}
             {/if}
 
+            {#if isOwned && !isCollectionAlbum(album)}
+              <CircleIconButton
+                title={$t('add_to_collections')}
+                onclick={() => (isShowingCollectionsModal = true)}
+                icon={mdiFolderMultiplePlusOutline}
+                size="20"
+                padding="2"
+              />
+            {/if}
+
             {#if isOwned}
-              <ButtonContextMenu icon={mdiDotsVertical} title={$t('album_options')}>
+              <ButtonContextMenu icon={mdiDotsVertical} title={$t('album_options')} size="20" padding="2">
                 {#if album.assetCount > 0}
                   <MenuOption
                     icon={mdiImageOutline}
@@ -1136,6 +1163,10 @@
     </div>
   {/if}
 </div>
+{#if isShowingCollectionsModal}
+  <AddToCollectionsModal {album} onClose={() => (isShowingCollectionsModal = false)} />
+{/if}
+
 {#if viewMode === AlbumPageViewMode.SELECT_USERS}
   <UserSelectionModal
     {album}

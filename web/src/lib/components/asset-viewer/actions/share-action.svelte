@@ -14,6 +14,7 @@
 
   let showModal = $state(false);
 </script>
+
 <!--
 <CircleIconButton color="opaque" icon={mdiShareVariantOutline} onclick={() => (showModal = true)} title={$t('share')} />
 

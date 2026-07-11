@@ -98,9 +98,6 @@
   {/snippet}
 </FullScreenModal> -->
 
-
-
-
 <script lang="ts">
   import { mdiClose, mdiTag } from '@mdi/js';
   import { t } from 'svelte-i18n';
@@ -124,24 +121,24 @@
   let selectedIds = new SvelteSet<string>();
   let disabled = $derived(selectedIds.size === 0);
   let allowCreate: boolean = $state(true);
-  
+
   // Reference to the form element for outsideClick detection
   let formElement: HTMLFormElement;
 
   onMount(async () => {
     allTags = await getAllTags();
-    
+
     // Set up the outsideClick handler after a short delay to prevent immediate triggering
     setTimeout(() => {
       document.addEventListener('click', handleOutsideClick);
     }, 100);
   });
-  
+
   // Clean up event listener when component is unmounted
   const onDestroy = () => {
     document.removeEventListener('click', handleOutsideClick);
   };
-  
+
   // Handle clicks outside the form
   const handleOutsideClick = (event: MouseEvent) => {
     // Check if formElement exists and contains the clicked element
@@ -153,7 +150,7 @@
         // If no tags selected, just close
         onCancel();
       }
-      
+
       // Remove the event listener
       document.removeEventListener('click', handleOutsideClick);
     }

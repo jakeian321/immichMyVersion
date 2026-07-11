@@ -1,4 +1,3 @@
-
 <!--  ORIGINAL CODE I EDITED 888999888 -->
 <script lang="ts">
   import { shortcut } from '$lib/actions/shortcut';
@@ -16,8 +15,6 @@
 <svelte:window use:shortcut={{ shortcut: { key: 'i' }, onShortcut: onShowDetail }} />
 
 <CircleIconButton color="opaque" icon={mdiInformationOutline} onclick={onShowDetail} title={$t('info')} />
- 
-
 
 <!-- my code 888999888
 

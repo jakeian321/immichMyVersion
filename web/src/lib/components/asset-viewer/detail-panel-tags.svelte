@@ -80,12 +80,8 @@
   </section>
 {/if}
 
-
 {#if isOpen}
   <Portal>
     <TagAssetForm onTag={(tagsIds) => handleTag(tagsIds)} onCancel={handleCancel} />
   </Portal>
 {/if}
-
-
-

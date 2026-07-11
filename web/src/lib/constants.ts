@@ -10,7 +10,6 @@ export enum AssetAction {
   ADD_TO_ALBUM = 'add-to-album',
   UNSTACK = 'unstack',
   KEEP_THIS_DELETE_OTHERS = 'keep-this-delete-others',
-
 }
 
 export enum AppRoute {
@@ -22,6 +21,7 @@ export enum AppRoute {
   ADMIN_REPAIR = '/admin/repair',
 
   ALBUMS = '/albums',
+  COLLECTIONS = '/collections',
   LIBRARIES = '/libraries',
   ARCHIVE = '/archive',
   FAVORITES = '/favorites',

@@ -2,7 +2,14 @@
   import { onMount, type Snippet } from 'svelte';
   import { groupBy } from 'lodash-es';
   import { addUsersToAlbum, deleteAlbum, type AlbumUserAddDto, type AlbumResponseDto, isHttpError } from '@immich/sdk';
-  import { mdiDeleteOutline, mdiShareVariantOutline, mdiFolderDownloadOutline, mdiRenameOutline } from '@mdi/js';
+  import {
+    mdiDeleteOutline,
+    mdiShareVariantOutline,
+    mdiFolderDownloadOutline,
+    mdiFolderMultiplePlusOutline,
+    mdiRenameOutline,
+  } from '@mdi/js';
+  import AddToCollectionsModal from '$lib/components/album-page/add-to-collections-modal.svelte';
   import EditAlbumForm from '$lib/components/forms/edit-album-form.svelte';
   import CreateSharedLinkModal from '$lib/components/shared-components/create-share-link-modal/create-shared-link-modal.svelte';
   import {
@@ -21,6 +28,7 @@
     getSelectedAlbumGroupOption,
     type AlbumGroup,
     confirmAlbumDelete,
+    isCollectionAlbum,
     sortAlbums,
     stringToSortOrder,
   } from '$lib/utils/album-utils';
@@ -145,6 +153,7 @@
   let albumToEdit: AlbumResponseDto | null = $state(null);
   let albumToShare: AlbumResponseDto | null = $state(null);
   let albumToDelete: AlbumResponseDto | null = null;
+  let albumToAddToCollections: AlbumResponseDto | null = $state(null);
 
   let contextMenuPosition: ContextMenuPosition = $state({ x: 0, y: 0 });
   let contextMenuTargetAlbum: AlbumResponseDto | undefined = $state();
@@ -258,6 +267,11 @@
 
   const handleEdit = (album: AlbumResponseDto) => {
     albumToEdit = album;
+    closeAlbumContextMenu();
+  };
+
+  const openAddToCollectionsModal = () => {
+    albumToAddToCollections = contextMenuTargetAlbum ?? null;
     closeAlbumContextMenu();
   };
 
@@ -402,6 +416,13 @@
       onClick={() => contextMenuTargetAlbum && handleEdit(contextMenuTargetAlbum)}
     />
     <MenuOption icon={mdiShareVariantOutline} text={$t('share')} onClick={() => openShareModal()} />
+    {#if contextMenuTargetAlbum && !isCollectionAlbum(contextMenuTargetAlbum)}
+      <MenuOption
+        icon={mdiFolderMultiplePlusOutline}
+        text={$t('add_to_collections')}
+        onClick={() => openAddToCollectionsModal()}
+      />
+    {/if}
   {/if}
   <MenuOption icon={mdiFolderDownloadOutline} text={$t('download')} onClick={() => handleDownloadAlbum()} />
   {#if showFullContextMenu}
@@ -418,6 +439,11 @@
       onCancel={() => (albumToEdit = null)}
       onClose={() => (albumToEdit = null)}
     />
+  {/if}
+
+  <!-- Add to Collections Modal -->
+  {#if albumToAddToCollections}
+    <AddToCollectionsModal album={albumToAddToCollections} onClose={() => (albumToAddToCollections = null)} />
   {/if}
 
   <!-- Share Modal -->
