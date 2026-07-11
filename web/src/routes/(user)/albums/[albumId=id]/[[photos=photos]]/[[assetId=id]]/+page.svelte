@@ -838,133 +838,144 @@
       {#if viewMode === AlbumPageViewMode.VIEW}
         <ControlAppBar showBackButton backIcon={mdiArrowLeft} onClose={() => goto(backUrl)}>
           {#snippet trailing()}
-            {#if isEditor}
-              <CircleIconButton
-                title={$t('add_photos')}
-                onclick={async () => {
-                  assetStore.suspendTransitions = true;
-                  viewMode = AlbumPageViewMode.SELECT_ASSETS;
-                  oldAt = { at: $gridScrollTarget?.at };
-                  await navigate(
-                    { targetRoute: 'current', assetId: null, assetGridRouteSearchParams: { at: null } },
-                    { replaceState: true },
-                  );
-                }}
-                icon={mdiImagePlusOutline}
-                size="20"
-                padding="2"
-              />
-            {/if}
-
-            {#if album.assetCount > 0}
-              <CircleIconButton
-                title={showDurationSort && durationSortDirection === 'desc' ? $t('close') : $t('sort_by_duration')}
-                onclick={() => toggleDurationSort('desc')}
-                icon={showDurationSort && durationSortDirection === 'desc' ? mdiClose : mdiSortClockDescendingOutline}
-                color={showDurationSort && durationSortDirection === 'desc' ? 'primary' : undefined}
-                size="20"
-                padding="2"
-              />
-              <CircleIconButton
-                title={showDurationSort && durationSortDirection === 'asc'
-                  ? $t('close')
-                  : $t('sort_by_duration_ascending')}
-                onclick={() => toggleDurationSort('asc')}
-                icon={showDurationSort && durationSortDirection === 'asc' ? mdiClose : mdiSortClockAscendingOutline}
-                color={showDurationSort && durationSortDirection === 'asc' ? 'primary' : undefined}
-                size="20"
-                padding="2"
-              />
-              <CircleIconButton
-                title={showFilenameDateSort && filenameDateSortDirection === 'desc'
-                  ? $t('close')
-                  : $t('sort_by_filename_date')}
-                onclick={() => toggleFilenameDateSort('desc')}
-                icon={showFilenameDateSort && filenameDateSortDirection === 'desc'
-                  ? mdiClose
-                  : mdiSortCalendarDescending}
-                color={showFilenameDateSort && filenameDateSortDirection === 'desc' ? 'primary' : undefined}
-                size="20"
-                padding="2"
-              />
-              <CircleIconButton
-                title={showFilenameDateSort && filenameDateSortDirection === 'asc'
-                  ? $t('close')
-                  : $t('sort_by_filename_date_ascending')}
-                onclick={() => toggleFilenameDateSort('asc')}
-                icon={showFilenameDateSort && filenameDateSortDirection === 'asc' ? mdiClose : mdiSortCalendarAscending}
-                color={showFilenameDateSort && filenameDateSortDirection === 'asc' ? 'primary' : undefined}
-                size="20"
-                padding="2"
-              />
-              <CircleIconButton
-                title={showNameSort && nameSortDirection === 'asc' ? $t('close') : $t('sort_by_name')}
-                onclick={() => toggleNameSort('asc')}
-                icon={showNameSort && nameSortDirection === 'asc' ? mdiClose : mdiSortAlphabeticalAscending}
-                color={showNameSort && nameSortDirection === 'asc' ? 'primary' : undefined}
-                size="20"
-                padding="2"
-              />
-              <CircleIconButton
-                title={showNameSort && nameSortDirection === 'desc' ? $t('close') : $t('sort_by_name_descending')}
-                onclick={() => toggleNameSort('desc')}
-                icon={showNameSort && nameSortDirection === 'desc' ? mdiClose : mdiSortAlphabeticalDescending}
-                color={showNameSort && nameSortDirection === 'desc' ? 'primary' : undefined}
-                size="20"
-                padding="2"
-              />
-
-              {#if isOwned}
-                <CircleIconButton
-                  title={$t('organize_by_tags')}
-                  onclick={handleOrganizeByTags}
-                  icon={mdiAutoFix}
-                  disabled={isOrganizing}
-                  size="20"
-                  padding="2"
-                />
-              {/if}
-            {/if}
-
-            {#if isOwned && !isCollectionAlbum(album)}
-              <CircleIconButton
-                title={$t('add_to_collections')}
-                onclick={() => (isShowingCollectionsModal = true)}
-                icon={mdiFolderMultiplePlusOutline}
-                size="20"
-                padding="2"
-              />
-            {/if}
-
-            {#if isOwned}
-              <ButtonContextMenu icon={mdiDotsVertical} title={$t('album_options')} size="20" padding="2">
-                {#if album.assetCount > 0}
-                  <MenuOption
-                    icon={mdiImageOutline}
-                    text={$t('select_album_cover')}
-                    onClick={() => (viewMode = AlbumPageViewMode.SELECT_THUMBNAIL)}
+            <!-- two rows on phones (sorts on top, actions underneath), one row on wider screens -->
+            <div class="flex flex-col items-end gap-1 md:flex-row md:items-center">
+              {#if album.assetCount > 0}
+                <div class="flex place-items-center gap-1">
+                  <CircleIconButton
+                    title={showDurationSort && durationSortDirection === 'desc' ? $t('close') : $t('sort_by_duration')}
+                    onclick={() => toggleDurationSort('desc')}
+                    icon={showDurationSort && durationSortDirection === 'desc'
+                      ? mdiClose
+                      : mdiSortClockDescendingOutline}
+                    color={showDurationSort && durationSortDirection === 'desc' ? 'primary' : undefined}
+                    size="20"
+                    padding="2"
                   />
-                  <MenuOption
-                    icon={mdiCogOutline}
-                    text={$t('options')}
-                    onClick={() => (viewMode = AlbumPageViewMode.OPTIONS)}
+                  <CircleIconButton
+                    title={showDurationSort && durationSortDirection === 'asc'
+                      ? $t('close')
+                      : $t('sort_by_duration_ascending')}
+                    onclick={() => toggleDurationSort('asc')}
+                    icon={showDurationSort && durationSortDirection === 'asc' ? mdiClose : mdiSortClockAscendingOutline}
+                    color={showDurationSort && durationSortDirection === 'asc' ? 'primary' : undefined}
+                    size="20"
+                    padding="2"
+                  />
+                  <CircleIconButton
+                    title={showFilenameDateSort && filenameDateSortDirection === 'desc'
+                      ? $t('close')
+                      : $t('sort_by_filename_date')}
+                    onclick={() => toggleFilenameDateSort('desc')}
+                    icon={showFilenameDateSort && filenameDateSortDirection === 'desc'
+                      ? mdiClose
+                      : mdiSortCalendarDescending}
+                    color={showFilenameDateSort && filenameDateSortDirection === 'desc' ? 'primary' : undefined}
+                    size="20"
+                    padding="2"
+                  />
+                  <CircleIconButton
+                    title={showFilenameDateSort && filenameDateSortDirection === 'asc'
+                      ? $t('close')
+                      : $t('sort_by_filename_date_ascending')}
+                    onclick={() => toggleFilenameDateSort('asc')}
+                    icon={showFilenameDateSort && filenameDateSortDirection === 'asc'
+                      ? mdiClose
+                      : mdiSortCalendarAscending}
+                    color={showFilenameDateSort && filenameDateSortDirection === 'asc' ? 'primary' : undefined}
+                    size="20"
+                    padding="2"
+                  />
+                  <CircleIconButton
+                    title={showNameSort && nameSortDirection === 'asc' ? $t('close') : $t('sort_by_name')}
+                    onclick={() => toggleNameSort('asc')}
+                    icon={showNameSort && nameSortDirection === 'asc' ? mdiClose : mdiSortAlphabeticalAscending}
+                    color={showNameSort && nameSortDirection === 'asc' ? 'primary' : undefined}
+                    size="20"
+                    padding="2"
+                  />
+                  <CircleIconButton
+                    title={showNameSort && nameSortDirection === 'desc' ? $t('close') : $t('sort_by_name_descending')}
+                    onclick={() => toggleNameSort('desc')}
+                    icon={showNameSort && nameSortDirection === 'desc' ? mdiClose : mdiSortAlphabeticalDescending}
+                    color={showNameSort && nameSortDirection === 'desc' ? 'primary' : undefined}
+                    size="20"
+                    padding="2"
+                  />
+                </div>
+              {/if}
+
+              <div class="flex place-items-center gap-1">
+                {#if isEditor}
+                  <CircleIconButton
+                    title={$t('add_photos')}
+                    onclick={async () => {
+                      assetStore.suspendTransitions = true;
+                      viewMode = AlbumPageViewMode.SELECT_ASSETS;
+                      oldAt = { at: $gridScrollTarget?.at };
+                      await navigate(
+                        { targetRoute: 'current', assetId: null, assetGridRouteSearchParams: { at: null } },
+                        { replaceState: true },
+                      );
+                    }}
+                    icon={mdiImagePlusOutline}
+                    size="20"
+                    padding="2"
                   />
                 {/if}
 
-                <MenuOption icon={mdiDeleteOutline} text={$t('delete_album')} onClick={() => handleRemoveAlbum()} />
-              </ButtonContextMenu>
-            {/if}
+                {#if album.assetCount > 0 && isOwned}
+                  <CircleIconButton
+                    title={$t('organize_by_tags')}
+                    onclick={handleOrganizeByTags}
+                    icon={mdiAutoFix}
+                    disabled={isOrganizing}
+                    size="20"
+                    padding="2"
+                  />
+                {/if}
 
-            {#if isCreatingSharedAlbum && album.albumUsers.length === 0}
-              <Button
-                size="sm"
-                rounded="lg"
-                disabled={album.assetCount === 0}
-                onclick={() => (viewMode = AlbumPageViewMode.SELECT_USERS)}
-              >
-                {$t('share')}
-              </Button>
-            {/if}
+                {#if isOwned && !isCollectionAlbum(album)}
+                  <CircleIconButton
+                    title={$t('add_to_collections')}
+                    onclick={() => (isShowingCollectionsModal = true)}
+                    icon={mdiFolderMultiplePlusOutline}
+                    size="20"
+                    padding="2"
+                  />
+                {/if}
+
+                {#if isOwned}
+                  <ButtonContextMenu icon={mdiDotsVertical} title={$t('album_options')} size="20" padding="2">
+                    {#if album.assetCount > 0}
+                      <MenuOption
+                        icon={mdiImageOutline}
+                        text={$t('select_album_cover')}
+                        onClick={() => (viewMode = AlbumPageViewMode.SELECT_THUMBNAIL)}
+                      />
+                      <MenuOption
+                        icon={mdiCogOutline}
+                        text={$t('options')}
+                        onClick={() => (viewMode = AlbumPageViewMode.OPTIONS)}
+                      />
+                    {/if}
+
+                    <MenuOption icon={mdiDeleteOutline} text={$t('delete_album')} onClick={() => handleRemoveAlbum()} />
+                  </ButtonContextMenu>
+                {/if}
+
+                {#if isCreatingSharedAlbum && album.albumUsers.length === 0}
+                  <Button
+                    size="sm"
+                    rounded="lg"
+                    disabled={album.assetCount === 0}
+                    onclick={() => (viewMode = AlbumPageViewMode.SELECT_USERS)}
+                  >
+                    {$t('share')}
+                  </Button>
+                {/if}
+              </div>
+            </div>
           {/snippet}
         </ControlAppBar>
       {/if}
@@ -1006,7 +1017,7 @@
     {/if}
 
     <main
-      class="relative h-dvh overflow-hidden bg-immich-bg px-6 max-md:pt-[var(--navbar-height-md)] pt-[var(--navbar-height)] dark:bg-immich-dark-bg"
+      class="relative h-dvh overflow-hidden bg-immich-bg px-6 max-md:pt-[calc(var(--navbar-height-md)+2.5rem)] pt-[var(--navbar-height)] dark:bg-immich-dark-bg"
     >
       {#if albumSearchActive}
         <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={albumSearchViewport.width}>
