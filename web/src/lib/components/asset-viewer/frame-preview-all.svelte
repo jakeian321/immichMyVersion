@@ -7,7 +7,7 @@
   import { removeTag, tagAssets } from '$lib/utils/asset-utils';
   import { handleError } from '$lib/utils/handle-error';
   import { navigate } from '$lib/utils/navigation';
-  import { deleteAssets, getAllTags, upsertTags, type AssetResponseDto } from '@immich/sdk';
+  import { deleteAssets, getAllTags, getAssetInfo, upsertTags, type AssetResponseDto } from '@immich/sdk';
   import { mdiClose, mdiDeleteOutline } from '@mdi/js';
   import { onDestroy, onMount } from 'svelte';
   import { t } from 'svelte-i18n';
@@ -39,7 +39,7 @@
   interface FeedSection {
     asset: AssetResponseDto;
     frames: { time: number; url: string }[];
-    status: 'pending' | 'generating' | 'done' | 'error' | 'deleted';
+    status: 'pending' | 'generating' | 'done' | 'error' | 'deleted' | 'skipped';
     /** review tag values currently applied via this feed (or found on the asset) */
     selectedTags: string[];
     /** the user explicitly tagged or trashed this video, so no fallback tag on scroll-past */
@@ -166,6 +166,19 @@
     }
   };
 
+  // the feed is a review queue for unreviewed media: anything that already carries a
+  // tag is left out. Tags are checked fresh right before a section would generate, so
+  // the payload the feed was opened with can't be stale.
+  const isAlreadyTagged = async (section: FeedSection): Promise<boolean> => {
+    try {
+      const fresh = await getAssetInfo({ id: section.asset.id });
+      return (fresh.tags ?? []).length > 0;
+    } catch {
+      // if the check fails, keep the video in the feed rather than silently dropping it
+      return false;
+    }
+  };
+
   const pumpQueue = async () => {
     if (isGenerating || isDestroyed) {
       return;
@@ -183,6 +196,10 @@
         // hammering every video at once
         if (generatedCount > LOOKAHEAD && !sentinelVisible) {
           break;
+        }
+        if (await isAlreadyTagged(sections[nextIndex])) {
+          sections[nextIndex].status = 'skipped';
+          continue;
         }
         await generateSection(nextIndex);
         generatedCount++;
@@ -382,7 +399,9 @@
     }
   });
 
-  let visibleSections = $derived(sections.filter((section) => section.status !== 'pending'));
+  let visibleSections = $derived(
+    sections.filter((section) => section.status !== 'pending' && section.status !== 'skipped'),
+  );
   let hasPending = $derived(sections.some((section) => section.status === 'pending'));
 
   // status can be flipped to 'deleted' by the trash button while generation awaits;
@@ -396,7 +415,7 @@
   <div class="flex items-center justify-between px-1">
     <h2 class="text-lg text-white">
       {$t('frame_preview_all')}
-      <span class="ml-2 text-sm text-gray-400">{assets.length}</span>
+      <span class="ml-2 text-sm text-gray-400">{visibleSections.length}/{assets.length}</span>
     </h2>
     <button type="button" class="text-white p-2" title={$t('close')} onclick={onClose}>
       <Icon path={mdiClose} size="1.5rem" />
