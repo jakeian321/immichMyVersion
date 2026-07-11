@@ -83,6 +83,8 @@
     mdiImagePlusOutline,
     mdiLink,
     mdiPlus,
+    mdiSortAlphabeticalAscending,
+    mdiSortAlphabeticalDescending,
     mdiSortCalendarAscending,
     mdiSortCalendarDescending,
     mdiSortClockAscendingOutline,
@@ -172,10 +174,23 @@
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const filenameDateSortViewport: Viewport = $state({ width: 0, height: 100_000 });
 
+  const NAME_SORT_LIMIT = 50;
+
+  let showNameSort = $state(false);
+  let nameSortDirection: 'desc' | 'asc' = $state('asc');
+  let isLoadingNameSort = $state(false);
+  let nameSortedAssets: AssetResponseDto[] = $state([]);
+  let nameSortAllAssets: AssetResponseDto[] = $state([]);
+  let nameSortPage = $state(0);
+  // height is set arbitrarily large so GalleryViewer renders every asset instead of
+  // virtualizing based on window scroll position, which doesn't track this view's scroll container
+  const nameSortViewport: Viewport = $state({ width: 0, height: 100_000 });
+
   const assetInteraction = new AssetInteraction();
   const timelineInteraction = new AssetInteraction();
   const durationSortInteraction = new AssetInteraction();
   const filenameDateSortInteraction = new AssetInteraction();
+  const nameSortInteraction = new AssetInteraction();
 
   afterNavigate(({ from }) => {
     let url: string | undefined = from?.url?.pathname;
@@ -407,6 +422,9 @@
       return;
     }
 
+    showFilenameDateSort = false;
+    showNameSort = false;
+
     showDurationSort = true;
     isLoadingDurationSort = true;
     durationSortedAssets = [];
@@ -478,6 +496,9 @@
       return;
     }
 
+    showDurationSort = false;
+    showNameSort = false;
+
     showFilenameDateSort = true;
     isLoadingFilenameDateSort = true;
     filenameDateSortedAssets = [];
@@ -506,6 +527,64 @@
       filenameDateSortPage * FILENAME_DATE_SORT_LIMIT,
       (filenameDateSortPage + 1) * FILENAME_DATE_SORT_LIMIT,
     );
+  };
+
+  // natural-order compare so numbered filenames like a000000002_... sort by their
+  // sequence number rather than as plain strings
+  const sortByName = (assets: AssetResponseDto[], direction: 'desc' | 'asc') =>
+    assets.slice().sort((a, b) => {
+      const comparison = a.originalFileName.localeCompare(b.originalFileName, undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
+      return direction === 'desc' ? -comparison : comparison;
+    });
+
+  const toggleNameSort = async (direction: 'desc' | 'asc') => {
+    if (showNameSort && nameSortDirection === direction) {
+      showNameSort = false;
+      cancelMultiselect(nameSortInteraction);
+      return;
+    }
+
+    nameSortDirection = direction;
+
+    if (showNameSort) {
+      cancelMultiselect(nameSortInteraction);
+      nameSortPage = 0;
+      nameSortAllAssets = sortByName(nameSortAllAssets, direction);
+      nameSortedAssets = nameSortAllAssets.slice(0, NAME_SORT_LIMIT);
+      return;
+    }
+
+    // the sort views render in a fixed priority order, so close the others to make
+    // sure this one actually becomes visible
+    showDurationSort = false;
+    showFilenameDateSort = false;
+
+    showNameSort = true;
+    isLoadingNameSort = true;
+    nameSortedAssets = [];
+    nameSortAllAssets = [];
+    nameSortPage = 0;
+
+    try {
+      const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
+      nameSortAllAssets = sortByName(fullAlbum.assets, direction);
+      nameSortedAssets = nameSortAllAssets.slice(0, NAME_SORT_LIMIT);
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_load_album'));
+      showNameSort = false;
+    } finally {
+      isLoadingNameSort = false;
+    }
+  };
+
+  const hasMoreNameSortedAssets = $derived((nameSortPage + 1) * NAME_SORT_LIMIT < nameSortAllAssets.length);
+
+  const loadNextNameSortPage = () => {
+    nameSortPage += 1;
+    nameSortedAssets = nameSortAllAssets.slice(nameSortPage * NAME_SORT_LIMIT, (nameSortPage + 1) * NAME_SORT_LIMIT);
   };
 
   const handleRemoveAlbum = async () => {
@@ -818,6 +897,22 @@
                 size="20"
                 padding="2"
               />
+              <CircleIconButton
+                title={showNameSort && nameSortDirection === 'asc' ? $t('close') : $t('sort_by_name')}
+                onclick={() => toggleNameSort('asc')}
+                icon={showNameSort && nameSortDirection === 'asc' ? mdiClose : mdiSortAlphabeticalAscending}
+                color={showNameSort && nameSortDirection === 'asc' ? 'primary' : undefined}
+                size="20"
+                padding="2"
+              />
+              <CircleIconButton
+                title={showNameSort && nameSortDirection === 'desc' ? $t('close') : $t('sort_by_name_descending')}
+                onclick={() => toggleNameSort('desc')}
+                icon={showNameSort && nameSortDirection === 'desc' ? mdiClose : mdiSortAlphabeticalDescending}
+                color={showNameSort && nameSortDirection === 'desc' ? 'primary' : undefined}
+                size="20"
+                padding="2"
+              />
 
               {#if isOwned}
                 <CircleIconButton
@@ -1005,10 +1100,34 @@
             {/if}
           {/if}
         </section>
+      {:else if showNameSort}
+        <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={nameSortViewport.width}>
+          {#if isLoadingNameSort}
+            <div class="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+          {:else}
+            <GalleryViewer
+              bind:assets={nameSortedAssets}
+              assetInteraction={nameSortInteraction}
+              viewport={nameSortViewport}
+              videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
+            />
+            {#if hasMoreNameSortedAssets}
+              <div class="flex justify-center pb-4">
+                <Button onclick={loadNextNameSortPage}>{$t('next')}</Button>
+              </div>
+            {/if}
+          {/if}
+        </section>
       {/if}
 
       <div
-        class:hidden={albumSearchActive || globalSearchActive || showDurationSort || showFilenameDateSort}
+        class:hidden={albumSearchActive ||
+          globalSearchActive ||
+          showDurationSort ||
+          showFilenameDateSort ||
+          showNameSort}
         class="h-full"
       >
         <AssetGrid
