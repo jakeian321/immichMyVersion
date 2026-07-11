@@ -4,9 +4,10 @@
   import { assetViewingStore } from '$lib/stores/asset-viewing.store';
   import { getAssetPlaybackUrl } from '$lib/utils';
   import { timeToSeconds } from '$lib/utils/date-time';
+  import { removeTag, tagAssets } from '$lib/utils/asset-utils';
   import { handleError } from '$lib/utils/handle-error';
   import { navigate } from '$lib/utils/navigation';
-  import { deleteAssets, type AssetResponseDto } from '@immich/sdk';
+  import { deleteAssets, getAllTags, upsertTags, type AssetResponseDto } from '@immich/sdk';
   import { mdiClose, mdiDeleteOutline } from '@mdi/js';
   import { onDestroy, onMount } from 'svelte';
   import { t } from 'svelte-i18n';
@@ -30,13 +31,42 @@
   // how many sections to generate ahead of the last one the user has scrolled to
   const LOOKAHEAD = 1;
 
+  // quick review tags shown next to the trash button; scrolling past a video without
+  // picking any of them (or trashing it) auto-applies REVIEW_FALLBACK_TAG
+  const REVIEW_TAGS = ['low', 'semitop', 'top'];
+  const REVIEW_FALLBACK_TAG = 'low';
+
   interface FeedSection {
     asset: AssetResponseDto;
     frames: { time: number; url: string }[];
     status: 'pending' | 'generating' | 'done' | 'error' | 'deleted';
+    /** review tag values currently applied via this feed (or found on the asset) */
+    selectedTags: string[];
+    /** the user explicitly tagged or trashed this video, so no fallback tag on scroll-past */
+    hasSelection: boolean;
+    /** the fallback tag was applied automatically rather than tapped */
+    autoTagged: boolean;
+    /** already scrolled past and processed; never process twice */
+    passed: boolean;
   }
 
-  let sections = $state<FeedSection[]>(assets.map((asset) => ({ asset, frames: [], status: 'pending' as const })));
+  let sections = $state<FeedSection[]>(
+    assets.map((asset) => {
+      // if the album payload includes tags, respect review tags already on the asset
+      const existing = (asset.tags ?? [])
+        .map((tag) => tag.value.toLowerCase())
+        .filter((value) => REVIEW_TAGS.includes(value));
+      return {
+        asset,
+        frames: [],
+        status: 'pending' as const,
+        selectedTags: existing,
+        hasSelection: existing.length > 0,
+        autoTagged: false,
+        passed: false,
+      };
+    }),
+  );
 
   let feedVideo: HTMLVideoElement | undefined = $state();
   let feedCanvas: HTMLCanvasElement | undefined = $state();
@@ -165,11 +195,119 @@
   const handleTrash = async (section: FeedSection) => {
     try {
       await deleteAssets({ assetBulkDeleteDto: { ids: [section.asset.id] } });
+      section.hasSelection = true;
       section.status = 'deleted';
       section.frames = [];
     } catch (error) {
       handleError(error, $t('errors.unable_to_trash_asset'));
     }
+  };
+
+  let reviewTagIds = $state<Record<string, string>>({});
+
+  const loadReviewTagIds = async () => {
+    try {
+      const allTags = await getAllTags();
+      const ids: Record<string, string> = {};
+      for (const tag of allTags) {
+        const value = tag.value.toLowerCase();
+        if (REVIEW_TAGS.includes(value)) {
+          ids[value] = tag.id;
+        }
+      }
+      reviewTagIds = ids;
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_load_tags'));
+    }
+  };
+
+  const ensureReviewTagId = async (value: string): Promise<string | undefined> => {
+    if (reviewTagIds[value]) {
+      return reviewTagIds[value];
+    }
+    const [created] = await upsertTags({ tagUpsertDto: { tags: [value] } });
+    if (created) {
+      reviewTagIds = { ...reviewTagIds, [value]: created.id };
+      return created.id;
+    }
+    return undefined;
+  };
+
+  const applyReviewTag = async (section: FeedSection, value: string) => {
+    try {
+      const tagId = await ensureReviewTagId(value);
+      if (tagId) {
+        await tagAssets({ tagIds: [tagId], assetIds: [section.asset.id], showNotification: false });
+      }
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_add_tag'));
+    }
+  };
+
+  const removeReviewTag = async (section: FeedSection, value: string) => {
+    try {
+      const tagId = reviewTagIds[value];
+      if (tagId) {
+        await removeTag({ tagIds: [tagId], assetIds: [section.asset.id], showNotification: false });
+      }
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_remove_tag'));
+    }
+  };
+
+  const handleReviewTagClick = async (section: FeedSection, value: string) => {
+    section.hasSelection = true;
+
+    if (section.selectedTags.includes(value)) {
+      section.selectedTags = section.selectedTags.filter((tag) => tag !== value);
+      if (value === REVIEW_FALLBACK_TAG) {
+        section.autoTagged = false;
+      }
+      await removeReviewTag(section, value);
+      return;
+    }
+
+    section.selectedTags = [...section.selectedTags, value];
+    await applyReviewTag(section, value);
+
+    // a real pick replaces an automatically applied fallback tag
+    if (value !== REVIEW_FALLBACK_TAG && section.autoTagged && section.selectedTags.includes(REVIEW_FALLBACK_TAG)) {
+      section.selectedTags = section.selectedTags.filter((tag) => tag !== REVIEW_FALLBACK_TAG);
+      section.autoTagged = false;
+      await removeReviewTag(section, REVIEW_FALLBACK_TAG);
+    }
+  };
+
+  const handleSectionPassed = async (section: FeedSection) => {
+    if (section.passed) {
+      return;
+    }
+    section.passed = true;
+
+    // only videos that were actually reviewable and got no explicit pick fall back
+    if (section.hasSelection || section.status === 'deleted' || section.status === 'error') {
+      return;
+    }
+
+    section.autoTagged = true;
+    section.selectedTags = [...section.selectedTags, REVIEW_FALLBACK_TAG];
+    await applyReviewTag(section, REVIEW_FALLBACK_TAG);
+  };
+
+  // watches each section within the feed's scroll container; a section counts as
+  // "passed" once its bottom scrolls out above the viewport
+  let passObserver: IntersectionObserver | undefined;
+  const sectionsByElement = new Map<Element, FeedSection>();
+
+  const trackScrollPast = (node: HTMLElement, section: FeedSection) => {
+    sectionsByElement.set(node, section);
+    passObserver?.observe(node);
+    return {
+      destroy() {
+        sectionsByElement.delete(node);
+        passObserver?.unobserve(node);
+      },
+    };
   };
 
   const handleFrameClick = async (section: FeedSection, time: number) => {
@@ -196,9 +334,11 @@
   };
 
   let observer: IntersectionObserver | undefined;
+  let scrollContainer: HTMLDivElement | undefined = $state();
 
   onMount(() => {
     void pumpQueue();
+    void loadReviewTagIds();
 
     observer = new IntersectionObserver((entries) => {
       sentinelVisible = entries.some((entry) => entry.isIntersecting);
@@ -209,11 +349,34 @@
     if (sentinel) {
       observer.observe(sentinel);
     }
+
+    passObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting || !entry.rootBounds) {
+            continue;
+          }
+          // fully above the visible area means the user scrolled past it
+          if (entry.boundingClientRect.bottom <= entry.rootBounds.top) {
+            const section = sectionsByElement.get(entry.target);
+            if (section) {
+              void handleSectionPassed(section);
+            }
+          }
+        }
+      },
+      { root: scrollContainer },
+    );
+    for (const element of sectionsByElement.keys()) {
+      passObserver.observe(element);
+    }
   });
 
   onDestroy(() => {
     isDestroyed = true;
     observer?.disconnect();
+    passObserver?.disconnect();
+    sectionsByElement.clear();
     if (feedVideo) {
       feedVideo.src = '';
     }
@@ -240,9 +403,9 @@
     </button>
   </div>
 
-  <div class="flex-1 overflow-y-auto overscroll-contain">
+  <div class="flex-1 overflow-y-auto overscroll-contain" bind:this={scrollContainer}>
     {#each visibleSections as section (section.asset.id)}
-      <section class="mb-6">
+      <section class="mb-6" use:trackScrollPast={section}>
         <div class="sticky top-0 z-10 flex items-center justify-between bg-black bg-opacity-80 px-1 py-1">
           <div class="min-w-0">
             <p
@@ -285,10 +448,24 @@
           </div>
         {/if}
 
-        <!-- trash sits after the frames: by the time you know whether to keep the
-             video you're at the bottom of its section, so no scrolling back up -->
+        <!-- review actions sit after the frames: by the time you know what the video
+             holds you're at the bottom of its section, so no scrolling back up -->
         {#if section.status !== 'deleted'}
-          <div class="mt-2 flex justify-center">
+          <div class="mt-2 flex items-center justify-center gap-2">
+            {#each REVIEW_TAGS as tagValue (tagValue)}
+              <button
+                type="button"
+                class={`rounded-full px-4 py-2 text-sm font-medium text-white transition-all ${
+                  section.selectedTags.includes(tagValue)
+                    ? 'bg-immich-primary'
+                    : 'bg-white bg-opacity-10 hover:bg-opacity-20'
+                }`}
+                onclick={() => handleReviewTagClick(section, tagValue)}
+              >
+                {tagValue}
+              </button>
+            {/each}
+
             <button
               type="button"
               class="flex items-center gap-2 rounded-full bg-white bg-opacity-10 px-4 py-2 text-white transition-all hover:bg-opacity-20 hover:text-red-400"
