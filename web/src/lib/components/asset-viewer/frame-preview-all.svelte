@@ -273,7 +273,7 @@
         {:else if section.status === 'error'}
           <p class="px-1 py-3 text-sm text-red-400">{$t('error')}</p>
         {:else}
-          <div class="grid grid-cols-1 items-start gap-1.5 sm:grid-cols-2 sm:gap-2">
+          <div class="grid grid-cols-2 items-start gap-1.5 sm:gap-2">
             {#each section.frames as frame (frame.time)}
               <button
                 type="button"
