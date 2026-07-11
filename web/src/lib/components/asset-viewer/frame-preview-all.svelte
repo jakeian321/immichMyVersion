@@ -23,9 +23,9 @@
   let { assets, currentAssetId, onJumpTo, onClose }: Props = $props();
 
   const FRAME_COUNT = 21;
-  // feed thumbnails are small; capping capture size keeps dozens of sections from
-  // exhausting memory the way full-resolution canvases would
-  const CAPTURE_MAX_WIDTH = 480;
+  // capping capture size keeps dozens of sections from exhausting memory the way
+  // full-resolution canvases would; sized for the roughly full-width tiles of the feed
+  const CAPTURE_MAX_WIDTH = 720;
   const JPEG_QUALITY = 0.6;
   // how many sections to generate ahead of the last one the user has scrolled to
   const LOOKAHEAD = 1;
@@ -273,17 +273,16 @@
         {:else if section.status === 'error'}
           <p class="px-1 py-3 text-sm text-red-400">{$t('error')}</p>
         {:else}
-          <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2">
+          <div class="grid grid-cols-1 items-start gap-1.5 sm:grid-cols-2 sm:gap-2">
             {#each section.frames as frame (frame.time)}
               <button
                 type="button"
-                class="relative aspect-video w-full overflow-hidden rounded-sm"
+                class="relative w-full overflow-hidden rounded-sm bg-black/30"
                 onclick={() => handleFrameClick(section, frame.time)}
               >
-                <img src={frame.url} alt={formatTime(frame.time)} class="h-full w-full object-cover" />
-                <span
-                  class="absolute bottom-0.5 right-0.5 rounded-sm bg-black bg-opacity-60 px-1 text-[10px] text-white"
-                >
+                <!-- natural aspect ratio, so the whole frame is visible instead of a crop -->
+                <img src={frame.url} alt={formatTime(frame.time)} class="w-full" />
+                <span class="absolute bottom-1 right-1 rounded-sm bg-black bg-opacity-60 px-1.5 text-xs text-white">
                   {formatTime(frame.time)}
                 </span>
               </button>
