@@ -255,17 +255,6 @@
               {formatTime(timeToSeconds(section.asset.duration ?? '0:00:00.00000'))}
             </p>
           </div>
-
-          {#if section.status !== 'deleted'}
-            <button
-              type="button"
-              class="shrink-0 p-2 text-white hover:text-red-400"
-              title={$t('trash')}
-              onclick={() => handleTrash(section)}
-            >
-              <Icon path={mdiDeleteOutline} size="1.4rem" />
-            </button>
-          {/if}
         </div>
 
         {#if section.status === 'deleted'}
@@ -293,6 +282,21 @@
                 <div class="aspect-video w-full animate-pulse rounded-sm bg-white bg-opacity-10"></div>
               {/each}
             {/if}
+          </div>
+        {/if}
+
+        <!-- trash sits after the frames: by the time you know whether to keep the
+             video you're at the bottom of its section, so no scrolling back up -->
+        {#if section.status !== 'deleted'}
+          <div class="mt-2 flex justify-center">
+            <button
+              type="button"
+              class="flex items-center gap-2 rounded-full bg-white bg-opacity-10 px-4 py-2 text-white transition-all hover:bg-opacity-20 hover:text-red-400"
+              title={$t('trash')}
+              onclick={() => handleTrash(section)}
+            >
+              <Icon path={mdiDeleteOutline} size="1.4rem" />
+            </button>
           </div>
         {/if}
       </section>

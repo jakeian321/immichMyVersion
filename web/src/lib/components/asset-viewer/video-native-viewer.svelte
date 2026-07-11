@@ -1486,12 +1486,7 @@
       <Portal>
         <div class="fixed inset-0 z-[9999] flex flex-col bg-black bg-opacity-90 p-2">
           <div class="flex items-center justify-between px-1">
-            <div class="flex items-center gap-1">
-              <button type="button" class="text-white p-2" title={$t('trash')} onclick={handleTrashFromFramePreview}>
-                <Icon path={mdiDeleteOutline} size="1.5rem" />
-              </button>
-              <h2 class="text-lg text-white">{$t('frame_preview')}</h2>
-            </div>
+            <h2 class="text-lg text-white">{$t('frame_preview')}</h2>
             <button type="button" class="text-white p-2" title={$t('close')} onclick={closeFramePreview}>
               <Icon path={mdiClose} size="1.5rem" />
             </button>
@@ -1518,6 +1513,19 @@
                   <div class="aspect-video w-full animate-pulse rounded-sm bg-white bg-opacity-10"></div>
                 {/each}
               {/if}
+            </div>
+
+            <!-- trash sits after the frames: by the time you know whether to keep the
+                 video you're at the bottom, so no scrolling back up -->
+            <div class="mt-2 flex justify-center pb-2">
+              <button
+                type="button"
+                class="flex items-center gap-2 rounded-full bg-white bg-opacity-10 px-4 py-2 text-white transition-all hover:bg-opacity-20 hover:text-red-400"
+                title={$t('trash')}
+                onclick={handleTrashFromFramePreview}
+              >
+                <Icon path={mdiDeleteOutline} size="1.4rem" />
+              </button>
             </div>
           </div>
         </div>
