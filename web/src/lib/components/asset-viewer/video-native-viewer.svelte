@@ -19,13 +19,21 @@
   import FaceEditor from '$lib/components/asset-viewer/face-editor/face-editor.svelte';
 
   // Import for tag components
+  import FramePreviewAll from '$lib/components/asset-viewer/frame-preview-all.svelte';
   import Icon from '$lib/components/elements/icon.svelte';
   import TagAssetForm from '$lib/components/forms/tag-asset-form.svelte';
   import Portal from '$lib/components/shared-components/portal/portal.svelte';
   import { AppRoute } from '$lib/constants';
   import { isSharedLink } from '$lib/utils';
   import { removeTag, tagAssets } from '$lib/utils/asset-utils';
-  import { deleteAssets, getAssetInfo, type AssetResponseDto, getAllTags, upsertTags } from '@immich/sdk';
+  import {
+    AssetTypeEnum,
+    deleteAssets,
+    getAssetInfo,
+    type AssetResponseDto,
+    getAllTags,
+    upsertTags,
+  } from '@immich/sdk';
   import {
     mdiClose,
     mdiPlus,
@@ -41,6 +49,7 @@
     mdiBookmark,
     mdiBookmarkOutline,
     mdiFilmstrip,
+    mdiFilmstripBoxMultiple,
     mdiDeleteOutline,
   } from '@mdi/js';
 
@@ -76,7 +85,7 @@
     onClose = () => {},
   }: Props = $props();
 
-  let { videoAutoplayDelayMs } = assetViewingStore;
+  let { videoAutoplayDelayMs, feedAssets } = assetViewingStore;
 
   let videoPlayer: HTMLVideoElement | undefined = $state();
   let videoContainer: HTMLDivElement | undefined = $state();
@@ -104,6 +113,18 @@
   let framePreviewVideo: HTMLVideoElement | undefined = $state();
   let framePreviewCanvas: HTMLCanvasElement | undefined = $state();
   let framePreviewLoadedUrl = '';
+
+  let showFramePreviewAll = $state(false);
+  let wasPlayingBeforeFramePreviewAll = false;
+  // upcoming videos in the view this asset was opened from, starting with the current
+  // one; empty when the opener didn't provide a feed (e.g. virtualized timeline)
+  let feedVideoAssets = $derived.by(() => {
+    const startIndex = $feedAssets.findIndex(({ id }) => id === assetId);
+    if (startIndex === -1) {
+      return [];
+    }
+    return $feedAssets.slice(startIndex).filter(({ type }) => type === AssetTypeEnum.Video);
+  });
 
   let currentTime = $state(0);
   let duration = $state(0);
@@ -307,6 +328,13 @@
 
   const handleCanPlay = async (video: HTMLVideoElement) => {
     try {
+      // one-shot seek requested by the opener (e.g. a frame tap in the frame-preview-all
+      // feed); consumed here so it only applies to the first load of the target video
+      const pendingSeekTime = assetViewingStore.consumePendingVideoSeek(assetId);
+      if (pendingSeekTime !== null) {
+        video.currentTime = pendingSeekTime;
+      }
+
       const delayMs = $videoAutoplayDelayMs;
       if (delayMs > 0) {
         // give a non-virtualized grid's other mounted assets a moment to settle before
@@ -620,6 +648,31 @@
 
     if (wasPlayingBeforeFramePreview && videoPlayer) {
       videoPlayer.play().catch((error) => handleError(error, $t('errors.unable_to_play_video')));
+    }
+  };
+
+  const openFramePreviewAll = () => {
+    if (feedVideoAssets.length === 0) {
+      return;
+    }
+
+    wasPlayingBeforeFramePreviewAll = isPlaying;
+    videoPlayer?.pause();
+    showFramePreviewAll = true;
+  };
+
+  const closeFramePreviewAll = () => {
+    showFramePreviewAll = false;
+
+    if (wasPlayingBeforeFramePreviewAll && videoPlayer) {
+      videoPlayer.play().catch((error) => handleError(error, $t('errors.unable_to_play_video')));
+    }
+  };
+
+  const jumpFromFramePreviewAll = (time: number) => {
+    if (videoPlayer) {
+      videoPlayer.currentTime = time;
+      updateProgress();
     }
   };
 
@@ -1165,6 +1218,20 @@
       </div>
     {/if}
 
+    <!-- Frame Preview All Button -->
+    {#if !isZoomed && feedVideoAssets.length > 0}
+      <div class="z-[1001] fixed left-24 top-[16%]">
+        <button
+          type="button"
+          class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
+          title={$t('frame_preview_all')}
+          onclick={openFramePreviewAll}
+        >
+          <Icon path={mdiFilmstripBoxMultiple} size="1.1rem" />
+        </button>
+      </div>
+    {/if}
+
     <!-- View Tags Button (V) -->
     {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && tags.length > 0}
       <div class="z-[1001] fixed left-12 top-[12%]">
@@ -1455,6 +1522,18 @@
             </div>
           </div>
         </div>
+      </Portal>
+    {/if}
+
+    <!-- Frame Preview All Overlay -->
+    {#if showFramePreviewAll}
+      <Portal>
+        <FramePreviewAll
+          assets={feedVideoAssets}
+          currentAssetId={assetId}
+          onJumpTo={jumpFromFramePreviewAll}
+          onClose={closeFramePreviewAll}
+        />
       </Portal>
     {/if}
 

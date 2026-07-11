@@ -109,6 +109,19 @@
 
   let showShortcuts = $state(false);
   let currentViewAssetIndex = 0;
+
+  // the viewed asset can change without going through this component's handlers (e.g.
+  // jumping to another video from the frame-preview-all feed); track it so next/previous
+  // stay relative to the asset actually being viewed
+  $effect(() => {
+    const viewingId = $isViewerOpen ? $viewingAsset?.id : undefined;
+    if (viewingId) {
+      const index = assets.findIndex(({ id }) => id === viewingId);
+      if (index !== -1) {
+        currentViewAssetIndex = index;
+      }
+    }
+  });
   let shiftKeyIsDown = $state(false);
   let lastAssetMouseEvent: AssetResponseDto | null = $state(null);
   let slidingWindow = $state({ top: 0, bottom: 0 });
@@ -142,7 +155,7 @@
   });
   const viewAssetHandler = async (asset: AssetResponseDto) => {
     currentViewAssetIndex = assets.findIndex((a) => a.id == asset.id);
-    setAsset(assets[currentViewAssetIndex], [], videoAutoplayDelayMs);
+    setAsset(assets[currentViewAssetIndex], [], videoAutoplayDelayMs, assets);
     await navigate({ targetRoute: 'current', assetId: $viewingAsset.id });
   };
 
@@ -387,7 +400,7 @@
 
   const navigateToAsset = async (asset?: AssetResponseDto) => {
     if (asset && asset.id !== $viewingAsset.id) {
-      setAsset(asset, [], videoAutoplayDelayMs);
+      setAsset(asset, [], videoAutoplayDelayMs, assets);
       await navigate({ targetRoute: 'current', assetId: $viewingAsset.id });
     }
   };
@@ -406,7 +419,7 @@
         } else if (currentViewAssetIndex === assets.length) {
           await handlePrevious();
         } else {
-          setAsset(assets[currentViewAssetIndex], [], videoAutoplayDelayMs);
+          setAsset(assets[currentViewAssetIndex], [], videoAutoplayDelayMs, assets);
         }
         break;
       }
