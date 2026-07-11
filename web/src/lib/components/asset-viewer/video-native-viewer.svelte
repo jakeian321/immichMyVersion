@@ -1497,18 +1497,17 @@
             </button>
           </div>
 
-          <div class="flex-1 overflow-y-auto">
-            <div class="grid h-full grid-cols-3 grid-rows-7 gap-1.5 sm:grid-cols-6 sm:grid-rows-4 sm:gap-2">
+          <div class="flex-1 overflow-y-auto overscroll-contain">
+            <div class="grid grid-cols-2 items-start gap-1.5 sm:gap-2">
               {#each framePreviewThumbnails as frame (frame.time)}
                 <button
                   type="button"
-                  class="relative h-full w-full overflow-hidden rounded-sm"
+                  class="relative w-full overflow-hidden rounded-sm bg-black/30"
                   onclick={() => jumpToFramePreview(frame.time)}
                 >
-                  <img src={frame.url} alt={formatTime(frame.time)} class="h-full w-full object-cover" />
-                  <span
-                    class="absolute bottom-0.5 right-0.5 rounded-sm bg-black bg-opacity-60 px-1 text-[10px] text-white"
-                  >
+                  <!-- natural aspect ratio, so the whole frame is visible instead of a crop -->
+                  <img src={frame.url} alt={formatTime(frame.time)} class="w-full" />
+                  <span class="absolute bottom-1 right-1 rounded-sm bg-black bg-opacity-60 px-1.5 text-xs text-white">
                     {formatTime(frame.time)}
                   </span>
                 </button>
@@ -1516,7 +1515,7 @@
 
               {#if isGeneratingFramePreview}
                 {#each Array.from({ length: FRAME_PREVIEW_COUNT - framePreviewThumbnails.length }) as _, index (index)}
-                  <div class="h-full w-full animate-pulse rounded-sm bg-white bg-opacity-10"></div>
+                  <div class="aspect-video w-full animate-pulse rounded-sm bg-white bg-opacity-10"></div>
                 {/each}
               {/if}
             </div>
