@@ -29,6 +29,7 @@
   import MenuOption from '$lib/components/shared-components/context-menu/menu-option.svelte';
   import ControlAppBar from '$lib/components/shared-components/control-app-bar.svelte';
   import CreateSharedLinkModal from '$lib/components/shared-components/create-share-link-modal/create-shared-link-modal.svelte';
+  import FullScreenModal from '$lib/components/shared-components/full-screen-modal.svelte';
   import GalleryViewer from '$lib/components/shared-components/gallery-viewer/gallery-viewer.svelte';
   import {
     NotificationType,
@@ -92,7 +93,9 @@
     mdiSortCalendarDescending,
     mdiSortClockAscendingOutline,
     mdiSortClockDescendingOutline,
+    mdiTimerOutline,
   } from '@mdi/js';
+  import { Input } from '@immich/ui';
   import { fly } from 'svelte/transition';
   import type { PageData } from './$types';
   import { t } from 'svelte-i18n';
@@ -237,6 +240,20 @@
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const likesSortViewport: Viewport = $state({ width: 0, height: 100_000 });
 
+  const DURATION_FILTER_LIMIT = 50;
+
+  let showDurationFilter = $state(false);
+  let isLoadingDurationFilter = $state(false);
+  let durationFilterAssets: AssetResponseDto[] = $state([]);
+  let durationFilterAllAssets: AssetResponseDto[] = $state([]);
+  let durationFilterScanIndex = $state(0);
+  let durationFilterRange = $state<{ min: number; max: number } | null>(null);
+  let isDurationFilterPromptOpen = $state(false);
+  let durationFilterInput = $state('');
+  // height is set arbitrarily large so GalleryViewer renders every asset instead of
+  // virtualizing based on window scroll position, which doesn't track this view's scroll container
+  const durationFilterViewport: Viewport = $state({ width: 0, height: 100_000 });
+
   const NAME_SORT_LIMIT = 50;
 
   let showNameSort = $state(false);
@@ -255,6 +272,7 @@
   const filenameDateSortInteraction = new AssetInteraction();
   const likesSortInteraction = new AssetInteraction();
   const nameSortInteraction = new AssetInteraction();
+  const durationFilterInteraction = new AssetInteraction();
 
   afterNavigate(({ from }) => {
     let url: string | undefined = from?.url?.pathname;
@@ -492,6 +510,7 @@
     showFilenameDateSort = false;
     showNameSort = false;
     showLikesSort = false;
+    showDurationFilter = false;
 
     showDurationSort = true;
     isLoadingDurationSort = true;
@@ -570,6 +589,7 @@
     showDurationSort = false;
     showNameSort = false;
     showLikesSort = false;
+    showDurationFilter = false;
 
     showFilenameDateSort = true;
     isLoadingFilenameDateSort = true;
@@ -642,6 +662,7 @@
     showDurationSort = false;
     showFilenameDateSort = false;
     showNameSort = false;
+    showDurationFilter = false;
 
     showLikesSort = true;
     isLoadingLikesSort = true;
@@ -670,6 +691,99 @@
     likesSortScanIndex = collected.nextIndex;
     if (collected.untagged.length > 0) {
       likesSortedAssets = collected.untagged;
+    }
+  };
+
+  // parses a duration range in seconds: "5:10" (5 to 10), "10" (10 and up), ":7" (up to 7)
+  const parseDurationRange = (input: string): { min: number; max: number } | null => {
+    const trimmed = input.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    let min = 0;
+    let max = Number.POSITIVE_INFINITY;
+
+    if (trimmed.includes(':')) {
+      const [minPart, maxPart] = trimmed.split(':', 2).map((part) => part.trim());
+      if (minPart) {
+        min = Number(minPart);
+      }
+      if (maxPart) {
+        max = Number(maxPart);
+      }
+    } else {
+      min = Number(trimmed);
+    }
+
+    if (Number.isNaN(min) || Number.isNaN(max) || min < 0 || max < min) {
+      return null;
+    }
+    return { min, max };
+  };
+
+  const toggleDurationFilter = () => {
+    if (showDurationFilter) {
+      showDurationFilter = false;
+      cancelMultiselect(durationFilterInteraction);
+      return;
+    }
+    durationFilterInput = '';
+    isDurationFilterPromptOpen = true;
+  };
+
+  const applyDurationFilter = async () => {
+    const range = parseDurationRange(durationFilterInput);
+    if (!range) {
+      return;
+    }
+
+    isDurationFilterPromptOpen = false;
+    durationFilterRange = range;
+
+    // the sort views render in a fixed priority order, so close the others to make
+    // sure this one actually becomes visible
+    showDurationSort = false;
+    showFilenameDateSort = false;
+    showNameSort = false;
+    showLikesSort = false;
+
+    showDurationFilter = true;
+    isLoadingDurationFilter = true;
+    durationFilterAssets = [];
+    durationFilterAllAssets = [];
+    durationFilterScanIndex = 0;
+
+    try {
+      const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
+      durationFilterAllAssets = fullAlbum.assets
+        .filter((asset) => {
+          const seconds = timeToSeconds(asset.duration ?? '0:00:00.00000');
+          return seconds >= range.min && seconds <= range.max;
+        })
+        .sort((a, b) => timeToSeconds(a.duration) - timeToSeconds(b.duration));
+      const collected = await collectUntaggedAssets(durationFilterAllAssets, 0, DURATION_FILTER_LIMIT);
+      durationFilterAssets = collected.untagged;
+      durationFilterScanIndex = collected.nextIndex;
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_load_album'));
+      showDurationFilter = false;
+    } finally {
+      isLoadingDurationFilter = false;
+    }
+  };
+
+  const hasMoreDurationFilterAssets = $derived(durationFilterScanIndex < durationFilterAllAssets.length);
+
+  const loadNextDurationFilterPage = async () => {
+    const collected = await collectUntaggedAssets(
+      durationFilterAllAssets,
+      durationFilterScanIndex,
+      DURATION_FILTER_LIMIT,
+    );
+    durationFilterScanIndex = collected.nextIndex;
+    if (collected.untagged.length > 0) {
+      durationFilterAssets = collected.untagged;
     }
   };
 
@@ -709,6 +823,7 @@
     showDurationSort = false;
     showFilenameDateSort = false;
     showLikesSort = false;
+    showDurationFilter = false;
 
     showNameSort = true;
     isLoadingNameSort = true;
@@ -1071,6 +1186,14 @@
                     size="20"
                     padding="2"
                   />
+                  <CircleIconButton
+                    title={showDurationFilter ? $t('close') : $t('filter_by_duration')}
+                    onclick={toggleDurationFilter}
+                    icon={showDurationFilter ? mdiClose : mdiTimerOutline}
+                    color={showDurationFilter ? 'primary' : undefined}
+                    size="20"
+                    padding="2"
+                  />
                 </div>
               {/if}
 
@@ -1328,6 +1451,34 @@
             {/if}
           {/if}
         </section>
+      {:else if showDurationFilter}
+        <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={durationFilterViewport.width}>
+          {#if durationFilterRange}
+            <p class="pb-2 text-center text-sm text-gray-500 dark:text-gray-400">
+              {durationFilterRange.min}s –
+              {durationFilterRange.max === Number.POSITIVE_INFINITY ? '∞' : `${durationFilterRange.max}s`}
+            </p>
+          {/if}
+          {#if isLoadingDurationFilter}
+            <div class="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+          {:else if durationFilterAssets.length === 0}
+            <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
+          {:else}
+            <GalleryViewer
+              bind:assets={durationFilterAssets}
+              assetInteraction={durationFilterInteraction}
+              viewport={durationFilterViewport}
+              videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
+            />
+            {#if hasMoreDurationFilterAssets}
+              <div class="flex justify-center pb-4">
+                <Button onclick={loadNextDurationFilterPage}>{$t('next')}</Button>
+              </div>
+            {/if}
+          {/if}
+        </section>
       {/if}
 
       <div
@@ -1336,7 +1487,8 @@
           showDurationSort ||
           showFilenameDateSort ||
           showNameSort ||
-          showLikesSort}
+          showLikesSort ||
+          showDurationFilter}
         class="h-full"
       >
         <AssetGrid
@@ -1493,6 +1645,33 @@
 </div>
 {#if isShowingCollectionsModal}
   <AddToCollectionsModal {album} onClose={() => (isShowingCollectionsModal = false)} />
+{/if}
+
+{#if isDurationFilterPromptOpen}
+  <FullScreenModal
+    title={$t('filter_by_duration')}
+    icon={mdiTimerOutline}
+    onClose={() => (isDurationFilterPromptOpen = false)}
+  >
+    <form
+      id="duration-filter-form"
+      autocomplete="off"
+      onsubmit={(event) => {
+        event.preventDefault();
+        void applyDurationFilter();
+      }}
+    >
+      <div class="my-4 flex flex-col gap-2">
+        <Input bind:value={durationFilterInput} autofocus placeholder="5:10" aria-label={$t('filter_by_duration')} />
+        <p class="text-sm text-gray-500 dark:text-gray-300">{$t('duration_range_hint')}</p>
+      </div>
+    </form>
+
+    {#snippet stickyBottom()}
+      <Button color="gray" fullwidth onclick={() => (isDurationFilterPromptOpen = false)}>{$t('cancel')}</Button>
+      <Button type="submit" form="duration-filter-form" fullwidth>{$t('search')}</Button>
+    {/snippet}
+  </FullScreenModal>
 {/if}
 
 {#if viewMode === AlbumPageViewMode.SELECT_USERS}
