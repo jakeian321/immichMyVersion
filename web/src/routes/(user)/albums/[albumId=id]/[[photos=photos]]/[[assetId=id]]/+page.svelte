@@ -85,6 +85,8 @@
     mdiPlus,
     mdiSortAlphabeticalAscending,
     mdiSortAlphabeticalDescending,
+    mdiSortNumericAscending,
+    mdiSortNumericDescending,
     mdiSortCalendarAscending,
     mdiSortCalendarDescending,
     mdiSortClockAscendingOutline,
@@ -174,6 +176,20 @@
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const filenameDateSortViewport: Viewport = $state({ width: 0, height: 100_000 });
 
+  const LIKES_SORT_LIMIT = 50;
+  // matches a likes count written into the filename, e.g. "... - 1902 likes - ..."
+  const FILENAME_LIKES_PATTERN = /(\d+)\s*likes/i;
+
+  let showLikesSort = $state(false);
+  let likesSortDirection: 'desc' | 'asc' = $state('desc');
+  let isLoadingLikesSort = $state(false);
+  let likesSortedAssets: AssetResponseDto[] = $state([]);
+  let likesSortAllAssets: AssetResponseDto[] = $state([]);
+  let likesSortPage = $state(0);
+  // height is set arbitrarily large so GalleryViewer renders every asset instead of
+  // virtualizing based on window scroll position, which doesn't track this view's scroll container
+  const likesSortViewport: Viewport = $state({ width: 0, height: 100_000 });
+
   const NAME_SORT_LIMIT = 50;
 
   let showNameSort = $state(false);
@@ -190,6 +206,7 @@
   const timelineInteraction = new AssetInteraction();
   const durationSortInteraction = new AssetInteraction();
   const filenameDateSortInteraction = new AssetInteraction();
+  const likesSortInteraction = new AssetInteraction();
   const nameSortInteraction = new AssetInteraction();
 
   afterNavigate(({ from }) => {
@@ -424,6 +441,7 @@
 
     showFilenameDateSort = false;
     showNameSort = false;
+    showLikesSort = false;
 
     showDurationSort = true;
     isLoadingDurationSort = true;
@@ -498,6 +516,7 @@
 
     showDurationSort = false;
     showNameSort = false;
+    showLikesSort = false;
 
     showFilenameDateSort = true;
     isLoadingFilenameDateSort = true;
@@ -526,6 +545,69 @@
     filenameDateSortedAssets = filenameDateSortAllAssets.slice(
       filenameDateSortPage * FILENAME_DATE_SORT_LIMIT,
       (filenameDateSortPage + 1) * FILENAME_DATE_SORT_LIMIT,
+    );
+  };
+
+  const getFilenameLikes = (filename: string): number | null => {
+    const match = filename.match(FILENAME_LIKES_PATTERN);
+    return match ? Number(match[1]) : null;
+  };
+
+  const sortByLikes = (assets: AssetResponseDto[], direction: 'desc' | 'asc') =>
+    assets
+      .map((asset) => ({ asset, likes: getFilenameLikes(asset.originalFileName) }))
+      .filter((entry): entry is { asset: AssetResponseDto; likes: number } => entry.likes !== null)
+      .sort((a, b) => (direction === 'desc' ? b.likes - a.likes : a.likes - b.likes))
+      .map((entry) => entry.asset);
+
+  const toggleLikesSort = async (direction: 'desc' | 'asc') => {
+    if (showLikesSort && likesSortDirection === direction) {
+      showLikesSort = false;
+      cancelMultiselect(likesSortInteraction);
+      return;
+    }
+
+    likesSortDirection = direction;
+
+    if (showLikesSort) {
+      cancelMultiselect(likesSortInteraction);
+      likesSortPage = 0;
+      likesSortAllAssets = sortByLikes(likesSortAllAssets, direction);
+      likesSortedAssets = likesSortAllAssets.slice(0, LIKES_SORT_LIMIT);
+      return;
+    }
+
+    // the sort views render in a fixed priority order, so close the others to make
+    // sure this one actually becomes visible
+    showDurationSort = false;
+    showFilenameDateSort = false;
+    showNameSort = false;
+
+    showLikesSort = true;
+    isLoadingLikesSort = true;
+    likesSortedAssets = [];
+    likesSortAllAssets = [];
+    likesSortPage = 0;
+
+    try {
+      const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
+      likesSortAllAssets = sortByLikes(fullAlbum.assets, direction);
+      likesSortedAssets = likesSortAllAssets.slice(0, LIKES_SORT_LIMIT);
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_load_album'));
+      showLikesSort = false;
+    } finally {
+      isLoadingLikesSort = false;
+    }
+  };
+
+  const hasMoreLikesSortedAssets = $derived((likesSortPage + 1) * LIKES_SORT_LIMIT < likesSortAllAssets.length);
+
+  const loadNextLikesSortPage = () => {
+    likesSortPage += 1;
+    likesSortedAssets = likesSortAllAssets.slice(
+      likesSortPage * LIKES_SORT_LIMIT,
+      (likesSortPage + 1) * LIKES_SORT_LIMIT,
     );
   };
 
@@ -561,6 +643,7 @@
     // sure this one actually becomes visible
     showDurationSort = false;
     showFilenameDateSort = false;
+    showLikesSort = false;
 
     showNameSort = true;
     isLoadingNameSort = true;
@@ -902,6 +985,22 @@
                     size="20"
                     padding="2"
                   />
+                  <CircleIconButton
+                    title={showLikesSort && likesSortDirection === 'desc' ? $t('close') : $t('sort_by_likes')}
+                    onclick={() => toggleLikesSort('desc')}
+                    icon={showLikesSort && likesSortDirection === 'desc' ? mdiClose : mdiSortNumericDescending}
+                    color={showLikesSort && likesSortDirection === 'desc' ? 'primary' : undefined}
+                    size="20"
+                    padding="2"
+                  />
+                  <CircleIconButton
+                    title={showLikesSort && likesSortDirection === 'asc' ? $t('close') : $t('sort_by_likes_ascending')}
+                    onclick={() => toggleLikesSort('asc')}
+                    icon={showLikesSort && likesSortDirection === 'asc' ? mdiClose : mdiSortNumericAscending}
+                    color={showLikesSort && likesSortDirection === 'asc' ? 'primary' : undefined}
+                    size="20"
+                    padding="2"
+                  />
                 </div>
               {/if}
 
@@ -1131,6 +1230,26 @@
             {/if}
           {/if}
         </section>
+      {:else if showLikesSort}
+        <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={likesSortViewport.width}>
+          {#if isLoadingLikesSort}
+            <div class="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+          {:else}
+            <GalleryViewer
+              bind:assets={likesSortedAssets}
+              assetInteraction={likesSortInteraction}
+              viewport={likesSortViewport}
+              videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
+            />
+            {#if hasMoreLikesSortedAssets}
+              <div class="flex justify-center pb-4">
+                <Button onclick={loadNextLikesSortPage}>{$t('next')}</Button>
+              </div>
+            {/if}
+          {/if}
+        </section>
       {/if}
 
       <div
@@ -1138,7 +1257,8 @@
           globalSearchActive ||
           showDurationSort ||
           showFilenameDateSort ||
-          showNameSort}
+          showNameSort ||
+          showLikesSort}
         class="h-full"
       >
         <AssetGrid
