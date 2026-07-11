@@ -66,6 +66,7 @@
     getActivities,
     getActivityStatistics,
     getAlbumInfo,
+    getAssetInfo,
     searchAssets,
     updateAlbumInfo,
     type ActivityResponseDto,
@@ -151,12 +152,58 @@
   // instead of competing with everything else still mounted for decode resources
   const VIDEO_AUTOPLAY_DELAY_MS = 600;
 
+  // the sort views are review queues like the frame-preview-all feed: media that already
+  // carries a tag is excluded. The album payload doesn't include tags, so each asset is
+  // checked once via getAssetInfo (batched, cached for the lifetime of this page).
+  const CONCURRENT_TAG_CHECKS = 10;
+  const taggedAssetCache = new Map<string, boolean>();
+
+  const isAssetTagged = async (assetId: string): Promise<boolean> => {
+    const cached = taggedAssetCache.get(assetId);
+    if (cached !== undefined) {
+      return cached;
+    }
+    try {
+      const info = await getAssetInfo({ id: assetId });
+      const tagged = (info.tags ?? []).length > 0;
+      taggedAssetCache.set(assetId, tagged);
+      return tagged;
+    } catch {
+      // if the check fails, keep the asset in the view rather than silently dropping it
+      return false;
+    }
+  };
+
+  // walks `candidates` from `startIndex`, collecting up to `count` untagged assets;
+  // returns them plus the index to resume from for the next page
+  const collectUntaggedAssets = async (candidates: AssetResponseDto[], startIndex: number, count: number) => {
+    const untagged: AssetResponseDto[] = [];
+    let index = startIndex;
+
+    while (index < candidates.length && untagged.length < count) {
+      const batch = candidates.slice(index, index + CONCURRENT_TAG_CHECKS);
+      const results = await Promise.all(batch.map((asset) => isAssetTagged(asset.id)));
+
+      for (const [batchIndex, tagged] of results.entries()) {
+        index++;
+        if (!tagged) {
+          untagged.push(batch[batchIndex]);
+          if (untagged.length === count) {
+            break;
+          }
+        }
+      }
+    }
+
+    return { untagged, nextIndex: index };
+  };
+
   let showDurationSort = $state(false);
   let durationSortDirection: 'desc' | 'asc' = $state('desc');
   let isLoadingDurationSort = $state(false);
   let durationSortedAssets: AssetResponseDto[] = $state([]);
   let durationSortAllAssets: AssetResponseDto[] = $state([]);
-  let durationSortPage = $state(0);
+  let durationSortScanIndex = $state(0);
   // height is set arbitrarily large so GalleryViewer renders every asset instead of
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const durationSortViewport: Viewport = $state({ width: 0, height: 100_000 });
@@ -171,7 +218,7 @@
   let isLoadingFilenameDateSort = $state(false);
   let filenameDateSortedAssets: AssetResponseDto[] = $state([]);
   let filenameDateSortAllAssets: AssetResponseDto[] = $state([]);
-  let filenameDateSortPage = $state(0);
+  let filenameDateSortScanIndex = $state(0);
   // height is set arbitrarily large so GalleryViewer renders every asset instead of
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const filenameDateSortViewport: Viewport = $state({ width: 0, height: 100_000 });
@@ -185,7 +232,7 @@
   let isLoadingLikesSort = $state(false);
   let likesSortedAssets: AssetResponseDto[] = $state([]);
   let likesSortAllAssets: AssetResponseDto[] = $state([]);
-  let likesSortPage = $state(0);
+  let likesSortScanIndex = $state(0);
   // height is set arbitrarily large so GalleryViewer renders every asset instead of
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const likesSortViewport: Viewport = $state({ width: 0, height: 100_000 });
@@ -197,7 +244,7 @@
   let isLoadingNameSort = $state(false);
   let nameSortedAssets: AssetResponseDto[] = $state([]);
   let nameSortAllAssets: AssetResponseDto[] = $state([]);
-  let nameSortPage = $state(0);
+  let nameSortScanIndex = $state(0);
   // height is set arbitrarily large so GalleryViewer renders every asset instead of
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const nameSortViewport: Viewport = $state({ width: 0, height: 100_000 });
@@ -433,9 +480,12 @@
 
     if (showDurationSort) {
       cancelMultiselect(durationSortInteraction);
-      durationSortPage = 0;
+      isLoadingDurationSort = true;
       durationSortAllAssets = sortByDuration(durationSortAllAssets, direction);
-      durationSortedAssets = durationSortAllAssets.slice(0, DURATION_SORT_LIMIT);
+      const collected = await collectUntaggedAssets(durationSortAllAssets, 0, DURATION_SORT_LIMIT);
+      durationSortedAssets = collected.untagged;
+      durationSortScanIndex = collected.nextIndex;
+      isLoadingDurationSort = false;
       return;
     }
 
@@ -447,12 +497,14 @@
     isLoadingDurationSort = true;
     durationSortedAssets = [];
     durationSortAllAssets = [];
-    durationSortPage = 0;
+    durationSortScanIndex = 0;
 
     try {
       const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
       durationSortAllAssets = sortByDuration(fullAlbum.assets, direction);
-      durationSortedAssets = durationSortAllAssets.slice(0, DURATION_SORT_LIMIT);
+      const collected = await collectUntaggedAssets(durationSortAllAssets, 0, DURATION_SORT_LIMIT);
+      durationSortedAssets = collected.untagged;
+      durationSortScanIndex = collected.nextIndex;
     } catch (error) {
       handleError(error, $t('errors.unable_to_load_album'));
       showDurationSort = false;
@@ -461,16 +513,14 @@
     }
   };
 
-  const hasMoreDurationSortedAssets = $derived(
-    (durationSortPage + 1) * DURATION_SORT_LIMIT < durationSortAllAssets.length,
-  );
+  const hasMoreDurationSortedAssets = $derived(durationSortScanIndex < durationSortAllAssets.length);
 
-  const loadNextDurationSortPage = () => {
-    durationSortPage += 1;
-    durationSortedAssets = durationSortAllAssets.slice(
-      durationSortPage * DURATION_SORT_LIMIT,
-      (durationSortPage + 1) * DURATION_SORT_LIMIT,
-    );
+  const loadNextDurationSortPage = async () => {
+    const collected = await collectUntaggedAssets(durationSortAllAssets, durationSortScanIndex, DURATION_SORT_LIMIT);
+    durationSortScanIndex = collected.nextIndex;
+    if (collected.untagged.length > 0) {
+      durationSortedAssets = collected.untagged;
+    }
   };
 
   const getFilenameDate = (filename: string): number | null => {
@@ -508,9 +558,12 @@
 
     if (showFilenameDateSort) {
       cancelMultiselect(filenameDateSortInteraction);
-      filenameDateSortPage = 0;
+      isLoadingFilenameDateSort = true;
       filenameDateSortAllAssets = sortByFilenameDate(filenameDateSortAllAssets, direction);
-      filenameDateSortedAssets = filenameDateSortAllAssets.slice(0, FILENAME_DATE_SORT_LIMIT);
+      const collected = await collectUntaggedAssets(filenameDateSortAllAssets, 0, FILENAME_DATE_SORT_LIMIT);
+      filenameDateSortedAssets = collected.untagged;
+      filenameDateSortScanIndex = collected.nextIndex;
+      isLoadingFilenameDateSort = false;
       return;
     }
 
@@ -522,12 +575,14 @@
     isLoadingFilenameDateSort = true;
     filenameDateSortedAssets = [];
     filenameDateSortAllAssets = [];
-    filenameDateSortPage = 0;
+    filenameDateSortScanIndex = 0;
 
     try {
       const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
       filenameDateSortAllAssets = sortByFilenameDate(fullAlbum.assets, direction);
-      filenameDateSortedAssets = filenameDateSortAllAssets.slice(0, FILENAME_DATE_SORT_LIMIT);
+      const collected = await collectUntaggedAssets(filenameDateSortAllAssets, 0, FILENAME_DATE_SORT_LIMIT);
+      filenameDateSortedAssets = collected.untagged;
+      filenameDateSortScanIndex = collected.nextIndex;
     } catch (error) {
       handleError(error, $t('errors.unable_to_load_album'));
       showFilenameDateSort = false;
@@ -536,16 +591,18 @@
     }
   };
 
-  const hasMoreFilenameDateSortedAssets = $derived(
-    (filenameDateSortPage + 1) * FILENAME_DATE_SORT_LIMIT < filenameDateSortAllAssets.length,
-  );
+  const hasMoreFilenameDateSortedAssets = $derived(filenameDateSortScanIndex < filenameDateSortAllAssets.length);
 
-  const loadNextFilenameDateSortPage = () => {
-    filenameDateSortPage += 1;
-    filenameDateSortedAssets = filenameDateSortAllAssets.slice(
-      filenameDateSortPage * FILENAME_DATE_SORT_LIMIT,
-      (filenameDateSortPage + 1) * FILENAME_DATE_SORT_LIMIT,
+  const loadNextFilenameDateSortPage = async () => {
+    const collected = await collectUntaggedAssets(
+      filenameDateSortAllAssets,
+      filenameDateSortScanIndex,
+      FILENAME_DATE_SORT_LIMIT,
     );
+    filenameDateSortScanIndex = collected.nextIndex;
+    if (collected.untagged.length > 0) {
+      filenameDateSortedAssets = collected.untagged;
+    }
   };
 
   const getFilenameLikes = (filename: string): number | null => {
@@ -571,9 +628,12 @@
 
     if (showLikesSort) {
       cancelMultiselect(likesSortInteraction);
-      likesSortPage = 0;
+      isLoadingLikesSort = true;
       likesSortAllAssets = sortByLikes(likesSortAllAssets, direction);
-      likesSortedAssets = likesSortAllAssets.slice(0, LIKES_SORT_LIMIT);
+      const collected = await collectUntaggedAssets(likesSortAllAssets, 0, LIKES_SORT_LIMIT);
+      likesSortedAssets = collected.untagged;
+      likesSortScanIndex = collected.nextIndex;
+      isLoadingLikesSort = false;
       return;
     }
 
@@ -587,12 +647,14 @@
     isLoadingLikesSort = true;
     likesSortedAssets = [];
     likesSortAllAssets = [];
-    likesSortPage = 0;
+    likesSortScanIndex = 0;
 
     try {
       const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
       likesSortAllAssets = sortByLikes(fullAlbum.assets, direction);
-      likesSortedAssets = likesSortAllAssets.slice(0, LIKES_SORT_LIMIT);
+      const collected = await collectUntaggedAssets(likesSortAllAssets, 0, LIKES_SORT_LIMIT);
+      likesSortedAssets = collected.untagged;
+      likesSortScanIndex = collected.nextIndex;
     } catch (error) {
       handleError(error, $t('errors.unable_to_load_album'));
       showLikesSort = false;
@@ -601,14 +663,14 @@
     }
   };
 
-  const hasMoreLikesSortedAssets = $derived((likesSortPage + 1) * LIKES_SORT_LIMIT < likesSortAllAssets.length);
+  const hasMoreLikesSortedAssets = $derived(likesSortScanIndex < likesSortAllAssets.length);
 
-  const loadNextLikesSortPage = () => {
-    likesSortPage += 1;
-    likesSortedAssets = likesSortAllAssets.slice(
-      likesSortPage * LIKES_SORT_LIMIT,
-      (likesSortPage + 1) * LIKES_SORT_LIMIT,
-    );
+  const loadNextLikesSortPage = async () => {
+    const collected = await collectUntaggedAssets(likesSortAllAssets, likesSortScanIndex, LIKES_SORT_LIMIT);
+    likesSortScanIndex = collected.nextIndex;
+    if (collected.untagged.length > 0) {
+      likesSortedAssets = collected.untagged;
+    }
   };
 
   // natural-order compare so numbered filenames like a000000002_... sort by their
@@ -633,9 +695,12 @@
 
     if (showNameSort) {
       cancelMultiselect(nameSortInteraction);
-      nameSortPage = 0;
+      isLoadingNameSort = true;
       nameSortAllAssets = sortByName(nameSortAllAssets, direction);
-      nameSortedAssets = nameSortAllAssets.slice(0, NAME_SORT_LIMIT);
+      const collected = await collectUntaggedAssets(nameSortAllAssets, 0, NAME_SORT_LIMIT);
+      nameSortedAssets = collected.untagged;
+      nameSortScanIndex = collected.nextIndex;
+      isLoadingNameSort = false;
       return;
     }
 
@@ -649,12 +714,14 @@
     isLoadingNameSort = true;
     nameSortedAssets = [];
     nameSortAllAssets = [];
-    nameSortPage = 0;
+    nameSortScanIndex = 0;
 
     try {
       const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
       nameSortAllAssets = sortByName(fullAlbum.assets, direction);
-      nameSortedAssets = nameSortAllAssets.slice(0, NAME_SORT_LIMIT);
+      const collected = await collectUntaggedAssets(nameSortAllAssets, 0, NAME_SORT_LIMIT);
+      nameSortedAssets = collected.untagged;
+      nameSortScanIndex = collected.nextIndex;
     } catch (error) {
       handleError(error, $t('errors.unable_to_load_album'));
       showNameSort = false;
@@ -663,11 +730,14 @@
     }
   };
 
-  const hasMoreNameSortedAssets = $derived((nameSortPage + 1) * NAME_SORT_LIMIT < nameSortAllAssets.length);
+  const hasMoreNameSortedAssets = $derived(nameSortScanIndex < nameSortAllAssets.length);
 
-  const loadNextNameSortPage = () => {
-    nameSortPage += 1;
-    nameSortedAssets = nameSortAllAssets.slice(nameSortPage * NAME_SORT_LIMIT, (nameSortPage + 1) * NAME_SORT_LIMIT);
+  const loadNextNameSortPage = async () => {
+    const collected = await collectUntaggedAssets(nameSortAllAssets, nameSortScanIndex, NAME_SORT_LIMIT);
+    nameSortScanIndex = collected.nextIndex;
+    if (collected.untagged.length > 0) {
+      nameSortedAssets = collected.untagged;
+    }
   };
 
   const handleRemoveAlbum = async () => {
@@ -1176,6 +1246,8 @@
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
             </div>
+          {:else if durationSortedAssets.length === 0}
+            <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
               bind:assets={durationSortedAssets}
@@ -1196,6 +1268,8 @@
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
             </div>
+          {:else if filenameDateSortedAssets.length === 0}
+            <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
               bind:assets={filenameDateSortedAssets}
@@ -1216,6 +1290,8 @@
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
             </div>
+          {:else if nameSortedAssets.length === 0}
+            <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
               bind:assets={nameSortedAssets}
@@ -1236,6 +1312,8 @@
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
             </div>
+          {:else if likesSortedAssets.length === 0}
+            <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
               bind:assets={likesSortedAssets}
