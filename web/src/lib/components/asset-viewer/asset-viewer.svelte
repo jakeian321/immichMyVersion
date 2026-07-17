@@ -508,8 +508,9 @@
   {/if}
 
   {#if $slideshowState === SlideshowState.None && showNavigation && !isShowEditor}
-    <!-- commented out this 888999888 and added line 461 <div class="z-[1001] my-auto column-span-1 col-start-1 row-span-full row-start-1 justify-self-start"> -->
-    <div class="z-[1001] fixed left-[0%] bottom-[10%]">
+    <!-- arrow button hidden (it sat over the tag buttons at the bottom left); kept
+         mounted so the ArrowLeft / 'a' keyboard shortcuts still navigate back -->
+    <div class="hidden">
       <PreviousAssetAction onPreviousAsset={() => navigateAsset('previous')} />
     </div>
   {/if}
