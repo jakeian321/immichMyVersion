@@ -7,8 +7,8 @@
   import { removeTag, tagAssets } from '$lib/utils/asset-utils';
   import { handleError } from '$lib/utils/handle-error';
   import { navigate } from '$lib/utils/navigation';
-  import { deleteAssets, getAllTags, getAssetInfo, upsertTags, type AssetResponseDto } from '@immich/sdk';
-  import { mdiClose, mdiDeleteOutline } from '@mdi/js';
+  import { getAllTags, getAssetInfo, upsertTags, type AssetResponseDto } from '@immich/sdk';
+  import { mdiClose } from '@mdi/js';
   import { onDestroy, onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { get } from 'svelte/store';
@@ -31,18 +31,28 @@
   // how many sections to generate ahead of the last one the user has scrolled to
   const LOOKAHEAD = 1;
 
-  // quick review tags shown next to the trash button; scrolling past a video without
-  // picking any of them (or trashing it) auto-applies REVIEW_FALLBACK_TAG
-  const REVIEW_TAGS = ['low', 'semitop', 'top'];
+  // quick review buttons under each video's frames; combo buttons apply several tags at
+  // once. Scrolling past a video without tapping any of them auto-applies
+  // REVIEW_FALLBACK_TAG.
+  const REVIEW_TAG_BUTTONS = [
+    { label: 'low', tagValues: ['low'] },
+    { label: 'ls', tagValues: ['low', 'semitop'] },
+    { label: 'semitop', tagValues: ['semitop'] },
+    { label: 'st', tagValues: ['semitop', 'top'] },
+    { label: 'top', tagValues: ['top'] },
+    { label: 'tp', tagValues: ['top', 'pose'] },
+    { label: 'ed', tagValues: ['editing'] },
+  ];
+  const REVIEW_TAGS = new Set(REVIEW_TAG_BUTTONS.flatMap(({ tagValues }) => tagValues));
   const REVIEW_FALLBACK_TAG = 'low';
 
   interface FeedSection {
     asset: AssetResponseDto;
     frames: { time: number; url: string }[];
-    status: 'pending' | 'generating' | 'done' | 'error' | 'deleted' | 'skipped';
+    status: 'pending' | 'generating' | 'done' | 'error' | 'skipped';
     /** review tag values currently applied via this feed (or found on the asset) */
     selectedTags: string[];
-    /** the user explicitly tagged or trashed this video, so no fallback tag on scroll-past */
+    /** the user explicitly tagged this video, so no fallback tag on scroll-past */
     hasSelection: boolean;
     /** the fallback tag was applied automatically rather than tapped */
     autoTagged: boolean;
@@ -55,7 +65,7 @@
       // if the album payload includes tags, respect review tags already on the asset
       const existing = (asset.tags ?? [])
         .map((tag) => tag.value.toLowerCase())
-        .filter((value) => REVIEW_TAGS.includes(value));
+        .filter((value) => REVIEW_TAGS.has(value));
       return {
         asset,
         frames: [],
@@ -148,16 +158,14 @@
       }
 
       for (const time of getFrameTimes(video.duration)) {
-        if (isDestroyed || isSectionDeleted(section)) {
+        if (isDestroyed) {
           return;
         }
         const url = await captureFrame(time);
         section.frames.push({ time, url });
       }
 
-      if (!isSectionDeleted(section)) {
-        section.status = 'done';
-      }
+      section.status = 'done';
     } catch (error) {
       if (!isDestroyed) {
         section.status = 'error';
@@ -209,17 +217,6 @@
     }
   };
 
-  const handleTrash = async (section: FeedSection) => {
-    try {
-      await deleteAssets({ assetBulkDeleteDto: { ids: [section.asset.id] } });
-      section.hasSelection = true;
-      section.status = 'deleted';
-      section.frames = [];
-    } catch (error) {
-      handleError(error, $t('errors.unable_to_trash_asset'));
-    }
-  };
-
   let reviewTagIds = $state<Record<string, string>>({});
 
   const loadReviewTagIds = async () => {
@@ -228,7 +225,7 @@
       const ids: Record<string, string> = {};
       for (const tag of allTags) {
         const value = tag.value.toLowerCase();
-        if (REVIEW_TAGS.includes(value)) {
+        if (REVIEW_TAGS.has(value)) {
           ids[value] = tag.id;
         }
       }
@@ -272,23 +269,36 @@
     }
   };
 
-  const handleReviewTagClick = async (section: FeedSection, value: string) => {
+  const isReviewButtonSelected = (section: FeedSection, tagValues: string[]) =>
+    tagValues.every((value) => section.selectedTags.includes(value));
+
+  const handleReviewTagClick = async (section: FeedSection, tagValues: string[]) => {
     section.hasSelection = true;
 
-    if (section.selectedTags.includes(value)) {
-      section.selectedTags = section.selectedTags.filter((tag) => tag !== value);
-      if (value === REVIEW_FALLBACK_TAG) {
+    // tapping a fully selected button unselects all of its tags
+    if (isReviewButtonSelected(section, tagValues)) {
+      section.selectedTags = section.selectedTags.filter((tag) => !tagValues.includes(tag));
+      if (tagValues.includes(REVIEW_FALLBACK_TAG)) {
         section.autoTagged = false;
       }
-      await removeReviewTag(section, value);
+      for (const value of tagValues) {
+        await removeReviewTag(section, value);
+      }
       return;
     }
 
-    section.selectedTags = [...section.selectedTags, value];
-    await applyReviewTag(section, value);
+    const missing = tagValues.filter((value) => !section.selectedTags.includes(value));
+    section.selectedTags = [...section.selectedTags, ...missing];
+    for (const value of missing) {
+      await applyReviewTag(section, value);
+    }
 
     // a real pick replaces an automatically applied fallback tag
-    if (value !== REVIEW_FALLBACK_TAG && section.autoTagged && section.selectedTags.includes(REVIEW_FALLBACK_TAG)) {
+    if (
+      !tagValues.includes(REVIEW_FALLBACK_TAG) &&
+      section.autoTagged &&
+      section.selectedTags.includes(REVIEW_FALLBACK_TAG)
+    ) {
       section.selectedTags = section.selectedTags.filter((tag) => tag !== REVIEW_FALLBACK_TAG);
       section.autoTagged = false;
       await removeReviewTag(section, REVIEW_FALLBACK_TAG);
@@ -302,7 +312,7 @@
     section.passed = true;
 
     // only videos that were actually reviewable and got no explicit pick fall back
-    if (section.hasSelection || section.status === 'deleted' || section.status === 'error') {
+    if (section.hasSelection || section.status === 'error') {
       return;
     }
 
@@ -403,10 +413,6 @@
     sections.filter((section) => section.status !== 'pending' && section.status !== 'skipped'),
   );
   let hasPending = $derived(sections.some((section) => section.status === 'pending'));
-
-  // status can be flipped to 'deleted' by the trash button while generation awaits;
-  // checking through a function keeps TypeScript from narrowing it to 'generating'
-  const isSectionDeleted = (section: FeedSection) => section.status === 'deleted';
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -439,9 +445,7 @@
           </div>
         </div>
 
-        {#if section.status === 'deleted'}
-          <p class="px-1 py-3 text-sm text-gray-500">{$t('moved_to_trash')}</p>
-        {:else if section.status === 'error'}
+        {#if section.status === 'error'}
           <p class="px-1 py-3 text-sm text-red-400">{$t('error')}</p>
         {:else}
           <div class="grid grid-cols-2 items-start gap-1.5 sm:gap-2">
@@ -469,32 +473,22 @@
 
         <!-- review actions sit after the frames: by the time you know what the video
              holds you're at the bottom of its section, so no scrolling back up -->
-        {#if section.status !== 'deleted'}
-          <div class="mt-2 flex items-center justify-center gap-2">
-            {#each REVIEW_TAGS as tagValue (tagValue)}
-              <button
-                type="button"
-                class={`rounded-full px-4 py-2 text-sm font-medium text-white transition-all ${
-                  section.selectedTags.includes(tagValue)
-                    ? 'bg-immich-primary'
-                    : 'bg-white bg-opacity-10 hover:bg-opacity-20'
-                }`}
-                onclick={() => handleReviewTagClick(section, tagValue)}
-              >
-                {tagValue}
-              </button>
-            {/each}
-
+        <div class="mt-2 flex flex-wrap items-center justify-center gap-1.5">
+          {#each REVIEW_TAG_BUTTONS as reviewButton (reviewButton.label)}
             <button
               type="button"
-              class="flex items-center gap-2 rounded-full bg-white bg-opacity-10 px-4 py-2 text-white transition-all hover:bg-opacity-20 hover:text-red-400"
-              title={$t('trash')}
-              onclick={() => handleTrash(section)}
+              class={`rounded-full px-3 py-2 text-sm font-medium text-white transition-all ${
+                isReviewButtonSelected(section, reviewButton.tagValues)
+                  ? 'bg-immich-primary'
+                  : 'bg-white bg-opacity-10 hover:bg-opacity-20'
+              }`}
+              title={reviewButton.tagValues.join(' + ')}
+              onclick={() => handleReviewTagClick(section, reviewButton.tagValues)}
             >
-              <Icon path={mdiDeleteOutline} size="1.4rem" />
+              {reviewButton.label}
             </button>
-          </div>
-        {/if}
+          {/each}
+        </div>
       </section>
     {/each}
 
