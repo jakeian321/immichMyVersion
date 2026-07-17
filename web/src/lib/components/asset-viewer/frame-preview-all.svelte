@@ -431,12 +431,15 @@
 {#snippet reviewButtonRow(section: FeedSection, buttons: { label: string; tagValues: string[] }[])}
   <div class="flex flex-wrap items-center justify-center gap-1.5">
     {#each buttons as reviewButton (reviewButton.label)}
+      <!-- hover styling is scoped to devices with a real pointer: iOS Safari emulates
+           hover on touch, which made the first tap on each new button "hover" it and
+           forced a second tap to actually click -->
       <button
         type="button"
-        class={`rounded-full px-3 py-2 text-sm font-medium text-white transition-all ${
+        class={`touch-manipulation rounded-full px-3 py-2 text-sm font-medium text-white transition-all ${
           isReviewButtonSelected(section, reviewButton.tagValues)
             ? 'bg-immich-primary'
-            : 'bg-white bg-opacity-10 hover:bg-opacity-20'
+            : 'bg-white bg-opacity-10 [@media(hover:hover)]:hover:bg-opacity-20'
         }`}
         title={reviewButton.tagValues.join(' + ')}
         onclick={() => handleReviewTagClick(section, reviewButton.tagValues)}

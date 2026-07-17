@@ -1520,7 +1520,7 @@
             <div class="mt-2 flex justify-center pb-2">
               <button
                 type="button"
-                class="flex items-center gap-2 rounded-full bg-white bg-opacity-10 px-4 py-2 text-white transition-all hover:bg-opacity-20 hover:text-red-400"
+                class="flex touch-manipulation items-center gap-2 rounded-full bg-white bg-opacity-10 px-4 py-2 text-white transition-all [@media(hover:hover)]:hover:bg-opacity-20 [@media(hover:hover)]:hover:text-red-400"
                 title={$t('trash')}
                 onclick={handleTrashFromFramePreview}
               >
