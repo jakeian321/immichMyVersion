@@ -43,7 +43,18 @@
     { label: 'tp', tagValues: ['top', 'pose'] },
     { label: 'ed', tagValues: ['editing'] },
   ];
-  const REVIEW_TAGS = new Set(REVIEW_TAG_BUTTONS.flatMap(({ tagValues }) => tagValues));
+  // second row: descriptor tags, labels shortened to 3 characters
+  const REVIEW_TAG_BUTTONS_SECONDARY = [
+    { label: 'sid', tagValues: ['side'] },
+    { label: 'tit', tagValues: ['tit'] },
+    { label: 'bod', tagValues: ['body'] },
+    { label: 'ass', tagValues: ['ass'] },
+    { label: 'bik', tagValues: ['bikini'] },
+    { label: 'wal', tagValues: ['walk'] },
+  ];
+  const REVIEW_TAGS = new Set(
+    [...REVIEW_TAG_BUTTONS, ...REVIEW_TAG_BUTTONS_SECONDARY].flatMap(({ tagValues }) => tagValues),
+  );
   const REVIEW_FALLBACK_TAG = 'low';
 
   interface FeedSection {
@@ -417,6 +428,25 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
+{#snippet reviewButtonRow(section: FeedSection, buttons: { label: string; tagValues: string[] }[])}
+  <div class="flex flex-wrap items-center justify-center gap-1.5">
+    {#each buttons as reviewButton (reviewButton.label)}
+      <button
+        type="button"
+        class={`rounded-full px-3 py-2 text-sm font-medium text-white transition-all ${
+          isReviewButtonSelected(section, reviewButton.tagValues)
+            ? 'bg-immich-primary'
+            : 'bg-white bg-opacity-10 hover:bg-opacity-20'
+        }`}
+        title={reviewButton.tagValues.join(' + ')}
+        onclick={() => handleReviewTagClick(section, reviewButton.tagValues)}
+      >
+        {reviewButton.label}
+      </button>
+    {/each}
+  </div>
+{/snippet}
+
 <div class="fixed inset-0 z-[9999] flex flex-col bg-black bg-opacity-95 p-2">
   <div class="flex items-center justify-between px-1">
     <h2 class="text-lg text-white">
@@ -473,21 +503,9 @@
 
         <!-- review actions sit after the frames: by the time you know what the video
              holds you're at the bottom of its section, so no scrolling back up -->
-        <div class="mt-2 flex flex-wrap items-center justify-center gap-1.5">
-          {#each REVIEW_TAG_BUTTONS as reviewButton (reviewButton.label)}
-            <button
-              type="button"
-              class={`rounded-full px-3 py-2 text-sm font-medium text-white transition-all ${
-                isReviewButtonSelected(section, reviewButton.tagValues)
-                  ? 'bg-immich-primary'
-                  : 'bg-white bg-opacity-10 hover:bg-opacity-20'
-              }`}
-              title={reviewButton.tagValues.join(' + ')}
-              onclick={() => handleReviewTagClick(section, reviewButton.tagValues)}
-            >
-              {reviewButton.label}
-            </button>
-          {/each}
+        <div class="mt-2 flex flex-col gap-1.5">
+          {@render reviewButtonRow(section, REVIEW_TAG_BUTTONS)}
+          {@render reviewButtonRow(section, REVIEW_TAG_BUTTONS_SECONDARY)}
         </div>
       </section>
     {/each}
