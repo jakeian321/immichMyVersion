@@ -17,6 +17,7 @@
   } from '@mdi/js';
 
   import { thumbhash } from '$lib/actions/thumbhash';
+  import { filenameAgeAnchor, getAgeForFilename } from '$lib/stores/filename-age.store';
   import { mobileDevice } from '$lib/stores/mobile-device.svelte';
   import { currentUrlReplaceAssetId } from '$lib/utils/navigation';
   import { TUNABLES } from '$lib/utils/tunables';
@@ -78,6 +79,9 @@
   let usingMobileDevice = $derived(mobileDevice.pointerCoarse);
   let focussableElement: HTMLElement | undefined = $state();
   let mouseOver = $state(false);
+
+  // set by the album page when the album has an age-number anchor configured
+  let ageBadge = $derived($filenameAgeAnchor ? getAgeForFilename($filenameAgeAnchor, asset.originalFileName) : null);
   let loaded = $state(false);
   let thumbError = $state(false);
 
@@ -283,6 +287,18 @@
             <span class="pr-2 pt-2">
               <Icon path={mdiRotate360} size="24" />
             </span>
+          </div>
+        {/if}
+
+        <!-- Age-number badge derived from the filename date (below the video duration) -->
+        {#if ageBadge !== null}
+          <div
+            class={[
+              'absolute z-10 rounded bg-black/60 px-1.5 py-0.5 text-xs font-medium text-white',
+              asset.type === AssetTypeEnum.Video ? 'right-1 top-7' : 'right-1 top-1',
+            ]}
+          >
+            {ageBadge}
           </div>
         {/if}
 

@@ -91,11 +91,18 @@
     mdiSortNumericDescending,
     mdiSortCalendarAscending,
     mdiSortCalendarDescending,
+    mdiNumeric,
     mdiSortClockAscendingOutline,
     mdiSortClockDescendingOutline,
     mdiTimerOutline,
   } from '@mdi/js';
   import { Input } from '@immich/ui';
+  import {
+    filenameAgeAnchor,
+    parseAgeAnchor,
+    stringifyAgeAnchor,
+    stripAgeAnchor,
+  } from '$lib/stores/filename-age.store';
   import { fly } from 'svelte/transition';
   import type { PageData } from './$types';
   import { t } from 'svelte-i18n';
@@ -956,7 +963,51 @@
     }
   });
 
-  onDestroy(() => assetStore.destroy());
+  onDestroy(() => {
+    assetStore.destroy();
+    filenameAgeAnchor.set(null);
+  });
+
+  // publish this album's age-number anchor (if configured) so thumbnails show badges
+  $effect(() => {
+    filenameAgeAnchor.set(parseAgeAnchor(album.description));
+  });
+
+  let isAgeNumberPromptOpen = $state(false);
+  let ageNumberInput = $state('');
+
+  const openAgeNumberPrompt = () => {
+    const anchor = parseAgeAnchor(album.description);
+    ageNumberInput = anchor
+      ? `${anchor.age}:${anchor.year}${String(anchor.month).padStart(2, '0')}${String(anchor.day).padStart(2, '0')}`
+      : '';
+    isAgeNumberPromptOpen = true;
+  };
+
+  const applyAgeNumber = async () => {
+    const trimmed = ageNumberInput.trim();
+    let marker = '';
+
+    if (trimmed) {
+      const match = trimmed.match(/^(\d+)\s*:\s*(\d{8})$/);
+      const anchor = match ? parseAgeAnchor(`[agenum:${match[1]}:${match[2]}]`) : null;
+      if (!anchor) {
+        return;
+      }
+      marker = stringifyAgeAnchor(anchor);
+    }
+
+    const base = stripAgeAnchor(album.description);
+    const description = marker ? (base ? `${base}\n${marker}` : marker) : base;
+
+    try {
+      await updateAlbumInfo({ id: album.id, updateAlbumDto: { description } });
+      isAgeNumberPromptOpen = false;
+      await refreshAlbum();
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_update_album_info'));
+    }
+  };
 
   const handleGlobalSearch = async () => {
     const term = searchTerm.trim();
@@ -1232,6 +1283,17 @@
                     title={$t('add_to_collections')}
                     onclick={() => (isShowingCollectionsModal = true)}
                     icon={mdiFolderMultiplePlusOutline}
+                    size="20"
+                    padding="2"
+                  />
+                {/if}
+
+                {#if isOwned}
+                  <CircleIconButton
+                    title={$t('album_number')}
+                    onclick={openAgeNumberPrompt}
+                    icon={mdiNumeric}
+                    color={parseAgeAnchor(album.description) ? 'primary' : undefined}
                     size="20"
                     padding="2"
                   />
@@ -1645,6 +1707,29 @@
 </div>
 {#if isShowingCollectionsModal}
   <AddToCollectionsModal {album} onClose={() => (isShowingCollectionsModal = false)} />
+{/if}
+
+{#if isAgeNumberPromptOpen}
+  <FullScreenModal title={$t('album_number')} icon={mdiNumeric} onClose={() => (isAgeNumberPromptOpen = false)}>
+    <form
+      id="age-number-form"
+      autocomplete="off"
+      onsubmit={(event) => {
+        event.preventDefault();
+        void applyAgeNumber();
+      }}
+    >
+      <div class="my-4 flex flex-col gap-2">
+        <Input bind:value={ageNumberInput} autofocus placeholder="90:20260216" aria-label={$t('album_number')} />
+        <p class="text-sm text-gray-500 dark:text-gray-300">{$t('album_number_hint')}</p>
+      </div>
+    </form>
+
+    {#snippet stickyBottom()}
+      <Button color="gray" fullwidth onclick={() => (isAgeNumberPromptOpen = false)}>{$t('cancel')}</Button>
+      <Button type="submit" form="age-number-form" fullwidth>{$t('save')}</Button>
+    {/snippet}
+  </FullScreenModal>
 {/if}
 
 {#if isDurationFilterPromptOpen}

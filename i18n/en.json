@@ -482,6 +482,8 @@
   "close": "Close",
   "collapse": "Collapse",
   "collapse_all": "Collapse all",
+  "album_number": "Album number",
+  "album_number_hint": "number:date — e.g. 90:20260216. Videos with a filename date within a year after the date get this number; each year earlier is one less. Leave empty to remove.",
   "collection_delete_confirmation": "Are you sure you want to delete the collection \"{collection}\"? The albums inside it will not be affected.",
   "collections": "Collections",
   "collections_updated": "Collections updated",
