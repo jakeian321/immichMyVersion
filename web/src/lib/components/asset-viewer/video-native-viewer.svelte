@@ -15,6 +15,7 @@
   import type { SwipeCustomEvent } from 'svelte-gestures';
   import { fade } from 'svelte/transition';
   import { t } from 'svelte-i18n';
+  import { filenameAgeAnchor, getAgeForFilename } from '$lib/stores/filename-age.store';
   import { isFaceEditMode } from '$lib/stores/face-edit.svelte';
   import FaceEditor from '$lib/components/asset-viewer/face-editor/face-editor.svelte';
 
@@ -113,6 +114,11 @@
   let framePreviewVideo: HTMLVideoElement | undefined = $state();
   let framePreviewCanvas: HTMLCanvasElement | undefined = $state();
   let framePreviewLoadedUrl = '';
+
+  // age number from the album's number:date anchor, when one is configured
+  let ageNumber = $derived(
+    $filenameAgeAnchor && asset ? getAgeForFilename($filenameAgeAnchor, asset.originalFileName) : null,
+  );
 
   let showFramePreviewAll = $state(false);
   let wasPlayingBeforeFramePreviewAll = false;
@@ -1171,6 +1177,15 @@
 
     {#if isFaceEditMode.value}
       <FaceEditor htmlElement={videoPlayer} {containerWidth} {containerHeight} {assetId} />
+    {/if}
+
+    <!-- Age Number Badge -->
+    {#if !isZoomed && ageNumber !== null}
+      <div class="z-[1001] fixed right-2 top-[8%]">
+        <span class="rounded-full bg-black bg-opacity-40 px-3 py-2 text-sm font-bold text-white">
+          {ageNumber}
+        </span>
+      </div>
     {/if}
 
     <!-- Quick Tag Preset Button -->

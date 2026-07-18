@@ -2,6 +2,7 @@
   import Icon from '$lib/components/elements/icon.svelte';
   import LoadingSpinner from '$lib/components/shared-components/loading-spinner.svelte';
   import { assetViewingStore } from '$lib/stores/asset-viewing.store';
+  import { filenameAgeAnchor, getAgeForFilename } from '$lib/stores/filename-age.store';
   import { getAssetPlaybackUrl } from '$lib/utils';
   import { timeToSeconds } from '$lib/utils/date-time';
   import { removeTag, tagAssets } from '$lib/utils/asset-utils';
@@ -424,6 +425,10 @@
     sections.filter((section) => section.status !== 'pending' && section.status !== 'skipped'),
   );
   let hasPending = $derived(sections.some((section) => section.status === 'pending'));
+
+  // age number from the album's number:date anchor, when one is configured
+  const sectionAgeNumber = (section: FeedSection): number | null =>
+    $filenameAgeAnchor ? getAgeForFilename($filenameAgeAnchor, section.asset.originalFileName) : null;
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -476,6 +481,12 @@
               {formatTime(timeToSeconds(section.asset.duration ?? '0:00:00.00000'))}
             </p>
           </div>
+
+          {#if sectionAgeNumber(section) !== null}
+            <span class="shrink-0 rounded-full bg-white bg-opacity-10 px-3 py-1 text-sm font-bold text-white">
+              {sectionAgeNumber(section)}
+            </span>
+          {/if}
         </div>
 
         {#if section.status === 'error'}
@@ -509,6 +520,14 @@
         <div class="mt-2 flex flex-col gap-1.5">
           {@render reviewButtonRow(section, REVIEW_TAG_BUTTONS)}
           {@render reviewButtonRow(section, REVIEW_TAG_BUTTONS_SECONDARY)}
+
+          {#if sectionAgeNumber(section) !== null}
+            <div class="flex justify-center">
+              <span class="rounded-full bg-white bg-opacity-10 px-3 py-1 text-sm font-bold text-white">
+                {sectionAgeNumber(section)}
+              </span>
+            </div>
+          {/if}
         </div>
       </section>
     {/each}
