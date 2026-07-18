@@ -55,7 +55,7 @@
     </div>
   {/if}
 
-  <AlbumCover {album} {preload} class="transition-all duration-300 hover:shadow-lg" />
+  <AlbumCover {album} {preload} swipeable class="transition-all duration-300 hover:shadow-lg" />
 
   <div class="mt-4">
     <p
