@@ -120,6 +120,12 @@
     filenameMatchedAlbumIds = null;
   };
 
+  // until any filter is chosen the page shows a plain list; thumbnails only appear
+  // once a range, collection filter, or filename search narrows things down
+  let hasActiveFilter = $derived(
+    selectedRange !== null || notInAnyCollection || selectedCollectionIds.size > 0 || filenameMatchedAlbumIds !== null,
+  );
+
   let filteredAlbums = $derived.by(() => {
     return displayAlbums.filter((album) => {
       if (selectedRange && (album.assetCount < selectedRange.min || album.assetCount > selectedRange.max)) {
@@ -254,36 +260,60 @@
       </p>
     </div>
 
-    <!-- results -->
-    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-      {#each filteredAlbums as album (album.id)}
-        <div class="relative">
-          <button type="button" class="w-full text-start" onclick={() => handleCardClick(album)}>
-            <div
-              class={selectionMode && selectedAlbumIds.has(album.id)
-                ? 'rounded-xl ring-4 ring-immich-primary dark:ring-immich-dark-primary'
-                : ''}
-            >
-              <AlbumCover {album} swipeable={!selectionMode} />
-            </div>
-            <p class="mt-1 line-clamp-1 text-sm font-medium text-black dark:text-white">{album.albumName}</p>
-            <p class="text-xs text-gray-500 dark:text-gray-400">
-              {$t('items_count', { values: { count: album.assetCount } })}
-            </p>
-          </button>
+    <!-- results: thumbnails once filtered, a compact list before that -->
+    {#if hasActiveFilter}
+      <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {#each filteredAlbums as album (album.id)}
+          <div class="relative">
+            <button type="button" class="w-full text-start" onclick={() => handleCardClick(album)}>
+              <div
+                class={selectionMode && selectedAlbumIds.has(album.id)
+                  ? 'rounded-xl ring-4 ring-immich-primary dark:ring-immich-dark-primary'
+                  : ''}
+              >
+                <AlbumCover {album} swipeable={!selectionMode} />
+              </div>
+              <p class="mt-1 line-clamp-1 text-sm font-medium text-black dark:text-white">{album.albumName}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {$t('items_count', { values: { count: album.assetCount } })}
+              </p>
+            </button>
 
-          {#if selectionMode}
-            <div class="pointer-events-none absolute right-2 top-2 z-10">
-              <Icon
-                path={selectedAlbumIds.has(album.id) ? mdiCheckCircle : mdiCircleOutline}
-                size="24"
-                class={selectedAlbumIds.has(album.id) ? 'text-immich-primary' : 'text-white'}
-              />
-            </div>
-          {/if}
-        </div>
-      {/each}
-    </div>
+            {#if selectionMode}
+              <div class="pointer-events-none absolute right-2 top-2 z-10">
+                <Icon
+                  path={selectedAlbumIds.has(album.id) ? mdiCheckCircle : mdiCircleOutline}
+                  size="24"
+                  class={selectedAlbumIds.has(album.id) ? 'text-immich-primary' : 'text-white'}
+                />
+              </div>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <div class="flex flex-col divide-y divide-gray-200 dark:divide-gray-800">
+        {#each filteredAlbums as album (album.id)}
+          <button
+            type="button"
+            class="flex items-center justify-between gap-2 px-2 py-3 text-start"
+            onclick={() => handleCardClick(album)}
+          >
+            <span class="line-clamp-1 text-sm font-medium text-black dark:text-white">{album.albumName}</span>
+            <span class="flex shrink-0 items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              {$t('items_count', { values: { count: album.assetCount } })}
+              {#if selectionMode}
+                <Icon
+                  path={selectedAlbumIds.has(album.id) ? mdiCheckCircle : mdiCircleOutline}
+                  size="20"
+                  class={selectedAlbumIds.has(album.id) ? 'text-immich-primary' : ''}
+                />
+              {/if}
+            </span>
+          </button>
+        {/each}
+      </div>
+    {/if}
 
     {#if filteredAlbums.length === 0}
       <p class="text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
