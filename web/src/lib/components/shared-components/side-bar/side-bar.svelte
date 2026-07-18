@@ -19,6 +19,7 @@
     mdiTrashCanOutline,
     mdiToolbox,
     mdiToolboxOutline,
+    mdiCounter,
     mdiFolderMultipleOutline,
     mdiFolderOutline,
     mdiSetMerge,
@@ -112,6 +113,8 @@
     <SideBarLink title={$t('combine')} routeId="/(user)/combine" icon={mdiSetMerge} flippedLogo />
 
     <SideBarLink title={$t('collections')} routeId="/(user)/collections" icon={mdiFolderMultipleOutline} flippedLogo />
+
+    <SideBarLink title={$t('ranges')} routeId="/(user)/ranges" icon={mdiCounter} flippedLogo />
 
     {#if $preferences.tags.enabled && $preferences.tags.sidebarWeb}
       <SideBarLink title={$t('tags')} routeId="/(user)/tags" icon={mdiTagMultipleOutline} flippedLogo />

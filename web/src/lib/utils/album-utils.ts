@@ -146,6 +146,75 @@ export const deleteCollection = async (collection: AlbumResponseDto) => {
 };
 
 /**
+ * ------------------
+ * Saved Count Ranges
+ * ------------------
+ *
+ * Saved item-count ranges (e.g. 300:400) for filtering the albums list. Like collections,
+ * they live as JSON in the description of a single marker album so they sync across
+ * devices without backend changes. `max: null` means open-ended.
+ */
+const RANGES_MARKER = 'immich-web-ranges';
+const RANGES_ALBUM_NAME = 'Ranges';
+
+export interface SavedCountRange {
+  min: number;
+  max: number | null;
+}
+
+interface RangesDescription {
+  marker: typeof RANGES_MARKER;
+  ranges: SavedCountRange[];
+}
+
+const parseRangesDescription = (description: string): RangesDescription | undefined => {
+  try {
+    const data = JSON.parse(description);
+    if (data?.marker === RANGES_MARKER && Array.isArray(data.ranges)) {
+      return {
+        marker: RANGES_MARKER,
+        ranges: data.ranges.filter(
+          (range: unknown): range is SavedCountRange =>
+            typeof range === 'object' &&
+            range !== null &&
+            typeof (range as SavedCountRange).min === 'number' &&
+            ((range as SavedCountRange).max === null || typeof (range as SavedCountRange).max === 'number'),
+        ),
+      };
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+};
+
+const stringifyRangesDescription = (ranges: SavedCountRange[]): string =>
+  JSON.stringify({ marker: RANGES_MARKER, ranges });
+
+export const isRangesAlbum = (album: AlbumResponseDto): boolean =>
+  parseRangesDescription(album.description) !== undefined;
+
+export const getSavedRanges = (album: AlbumResponseDto): SavedCountRange[] =>
+  parseRangesDescription(album.description)?.ranges ?? [];
+
+export const saveRanges = async (rangesAlbum: AlbumResponseDto | undefined, ranges: SavedCountRange[]) => {
+  try {
+    if (rangesAlbum) {
+      return await sdk.updateAlbumInfo({
+        id: rangesAlbum.id,
+        updateAlbumDto: { description: stringifyRangesDescription(ranges) },
+      });
+    }
+    return await sdk.createAlbum({
+      createAlbumDto: { albumName: RANGES_ALBUM_NAME, description: stringifyRangesDescription(ranges) },
+    });
+  } catch (error) {
+    const $t = get(t);
+    handleError(error, $t('errors.unable_to_save_album'));
+  }
+};
+
+/**
  * -------------
  * Album Sorting
  * -------------
