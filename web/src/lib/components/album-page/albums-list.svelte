@@ -53,6 +53,8 @@
     ownedAlbums?: AlbumResponseDto[];
     sharedAlbums?: AlbumResponseDto[];
     searchQuery?: string;
+    /** when set, only albums whose asset count falls inside the range are shown */
+    assetCountRange?: { min: number; max: number } | null;
     userSettings: AlbumViewSettings;
     allowEdit?: boolean;
     showOwner?: boolean;
@@ -64,6 +66,7 @@
     ownedAlbums = $bindable([]),
     sharedAlbums = $bindable([]),
     searchQuery = '',
+    assetCountRange = null,
     userSettings,
     allowEdit = false,
     showOwner = false,
@@ -178,17 +181,21 @@
     }
   });
 
-  // Step 2: Filter using the given search query.
+  // Step 2: Filter using the given search query and asset-count range.
   run(() => {
+    let result = albums;
+
     if (searchQuery) {
       const searchAlbumNormalized = normalizeSearchString(searchQuery);
-
-      filteredAlbums = albums.filter((album) => {
-        return normalizeSearchString(album.albumName).includes(searchAlbumNormalized);
-      });
-    } else {
-      filteredAlbums = albums;
+      result = result.filter((album) => normalizeSearchString(album.albumName).includes(searchAlbumNormalized));
     }
+
+    if (assetCountRange) {
+      const { min, max } = assetCountRange;
+      result = result.filter((album) => album.assetCount >= min && album.assetCount <= max);
+    }
+
+    filteredAlbums = result;
   });
 
   // Step 3: Group albums.
