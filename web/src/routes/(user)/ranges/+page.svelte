@@ -4,7 +4,7 @@
   import Button from '$lib/components/elements/buttons/button.svelte';
   import Icon from '$lib/components/elements/icon.svelte';
   import UserPageLayout from '$lib/components/layouts/user-page-layout.svelte';
-  import { albumViewSettings } from '$lib/stores/preferences.store';
+  import { AlbumViewMode, albumViewSettings } from '$lib/stores/preferences.store';
   import {
     getSavedRanges,
     isCollectionAlbum,
@@ -147,9 +147,10 @@
     {/if}
 
     {#if selectedRange}
+      <!-- always thumbnail view here, independent of the albums page's list/cover setting -->
       <Albums
         ownedAlbums={displayAlbums}
-        userSettings={$albumViewSettings}
+        userSettings={{ ...$albumViewSettings, view: AlbumViewMode.Cover }}
         allowEdit
         assetCountRange={selectedRange}
         bind:albumGroupIds={albumGroups}
