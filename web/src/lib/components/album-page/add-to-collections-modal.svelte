@@ -6,10 +6,14 @@
     NotificationType,
     notificationController,
   } from '$lib/components/shared-components/notification/notification';
-  import { AppRoute } from '$lib/constants';
-  import { getCollectionAlbumIds, isCollectionAlbum, setCollectionAlbums } from '$lib/utils/album-utils';
-  import { goto } from '$app/navigation';
+  import {
+    createCollection,
+    getCollectionAlbumIds,
+    isCollectionAlbum,
+    setCollectionAlbums,
+  } from '$lib/utils/album-utils';
   import { getAllAlbums, type AlbumResponseDto } from '@immich/sdk';
+  import { Input } from '@immich/ui';
   import { mdiFolderMultipleOutline } from '@mdi/js';
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
@@ -49,6 +53,30 @@
     }
   };
 
+  let newCollectionName = $state('');
+  let isCreating = $state(false);
+
+  // creates the collection with this album already linked, so saving without further
+  // changes keeps it in
+  const handleCreateCollection = async () => {
+    const name = newCollectionName.trim();
+    if (!name || isCreating) {
+      return;
+    }
+
+    isCreating = true;
+    try {
+      const created = await createCollection(name, [album.id]);
+      if (created) {
+        collections = [...collections, created].sort((a, b) => a.albumName.localeCompare(b.albumName));
+        selectedIds.add(created.id);
+        newCollectionName = '';
+      }
+    } finally {
+      isCreating = false;
+    }
+  };
+
   const handleSave = async () => {
     isSaving = true;
     let updatedCount = 0;
@@ -84,23 +112,39 @@
 
   {#if isLoading}
     <p class="py-4 text-sm">{$t('loading')}</p>
-  {:else if collections.length === 0}
-    <div class="flex flex-col gap-4 py-4">
-      <p class="text-sm">{$t('no_collections_message')}</p>
-      <Button size="sm" onclick={() => goto(AppRoute.COLLECTIONS)}>{$t('new_collection')}</Button>
-    </div>
   {:else}
-    <div class="my-4 flex max-h-80 flex-col gap-3 overflow-y-auto">
-      {#each collections as collection (collection.id)}
-        <Checkbox
-          id="collection-{collection.id}-checkbox"
-          label={collection.albumName}
-          labelClass="text-sm dark:text-immich-dark-fg"
-          checked={selectedIds.has(collection.id)}
-          onchange={() => handleToggle(collection.id)}
-        />
-      {/each}
-    </div>
+    {#if collections.length === 0}
+      <p class="py-4 text-sm">{$t('no_collections_message')}</p>
+    {:else}
+      <div class="my-4 flex max-h-80 flex-col gap-3 overflow-y-auto">
+        {#each collections as collection (collection.id)}
+          <Checkbox
+            id="collection-{collection.id}-checkbox"
+            label={collection.albumName}
+            labelClass="text-sm dark:text-immich-dark-fg"
+            checked={selectedIds.has(collection.id)}
+            onchange={() => handleToggle(collection.id)}
+          />
+        {/each}
+      </div>
+    {/if}
+
+    <!-- create a collection right here, with this album already linked -->
+    <form
+      class="mb-4 flex items-center gap-2"
+      onsubmit={(event) => {
+        event.preventDefault();
+        void handleCreateCollection();
+      }}
+    >
+      <Input
+        class="flex-1"
+        bind:value={newCollectionName}
+        placeholder={$t('new_collection')}
+        aria-label={$t('new_collection')}
+      />
+      <Button type="submit" size="sm" disabled={isCreating || !newCollectionName.trim()}>{$t('create')}</Button>
+    </form>
   {/if}
 
   {#snippet stickyBottom()}
