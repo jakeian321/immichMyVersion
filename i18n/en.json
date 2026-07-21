@@ -1265,6 +1265,7 @@
   "sort_by_duration_ascending": "Sort by duration (shortest first)",
   "sort_by_filename_date": "Sort by date in filename",
   "sort_by_filename_date_ascending": "Sort by date in filename (oldest first)",
+  "sort_by_item_count": "Sort by item count",
   "sort_by_likes": "Sort by likes (most first)",
   "sort_by_likes_ascending": "Sort by likes (fewest first)",
   "sort_by_name": "Sort by name (A to Z)",

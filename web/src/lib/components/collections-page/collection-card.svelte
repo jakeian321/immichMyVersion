@@ -34,6 +34,14 @@
     linkedAlbumIds.map((id) => albumMap.get(id)).filter((album): album is AlbumResponseDto => album !== undefined),
   );
 
+  // default: most assets first; toggle switches to alphabetical
+  let sortByName = $state(false);
+  let sortedLinkedAlbums = $derived(
+    sortByName
+      ? [...linkedAlbums].sort((a, b) => a.albumName.localeCompare(b.albumName))
+      : [...linkedAlbums].sort((a, b) => b.assetCount - a.assetCount),
+  );
+
   let addOptions = $derived(
     linkableAlbums
       .filter((album) => !linkedAlbumIds.includes(album.id))
@@ -119,8 +127,18 @@
   </div>
 
   {#if linkedAlbums.length > 0}
+    <div class="flex justify-end">
+      <button
+        type="button"
+        class="rounded-full bg-gray-200 px-3 py-1 text-xs font-medium text-gray-700 transition-all hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+        onclick={() => (sortByName = !sortByName)}
+      >
+        {sortByName ? $t('sort_by_item_count') : $t('sort_by_name')}
+      </button>
+    </div>
+
     <div class="flex flex-wrap gap-3">
-      {#each linkedAlbums as album (album.id)}
+      {#each sortedLinkedAlbums as album (album.id)}
         <div class="group relative">
           <button
             type="button"

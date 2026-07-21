@@ -126,8 +126,11 @@
     selectedRange !== null || notInAnyCollection || selectedCollectionIds.size > 0 || filenameMatchedAlbumIds !== null,
   );
 
+  // default: most assets first; toggle switches to alphabetical
+  let sortByName = $state(false);
+
   let filteredAlbums = $derived.by(() => {
-    return displayAlbums.filter((album) => {
+    const matches = displayAlbums.filter((album) => {
       if (selectedRange && (album.assetCount < selectedRange.min || album.assetCount > selectedRange.max)) {
         return false;
       }
@@ -146,6 +149,10 @@
 
       return true;
     });
+
+    return sortByName
+      ? matches.sort((a, b) => a.albumName.localeCompare(b.albumName))
+      : matches.sort((a, b) => b.assetCount - a.assetCount);
   });
 
   // ---- selection mode ----
@@ -255,7 +262,14 @@
           {$t('add_to_collections')} ({selectedAlbumIds.size})
         </Button>
       {/if}
-      <p class="ml-auto text-sm text-gray-500 dark:text-gray-400">
+      <button
+        type="button"
+        class="ml-auto rounded-full bg-gray-200 px-3 py-1 text-xs font-medium text-gray-700 transition-all hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+        onclick={() => (sortByName = !sortByName)}
+      >
+        {sortByName ? $t('sort_by_item_count') : $t('sort_by_name')}
+      </button>
+      <p class="text-sm text-gray-500 dark:text-gray-400">
         {$t('items_count', { values: { count: filteredAlbums.length } })}
       </p>
     </div>
