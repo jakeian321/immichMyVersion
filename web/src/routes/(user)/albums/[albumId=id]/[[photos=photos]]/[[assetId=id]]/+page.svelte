@@ -68,6 +68,7 @@
     getActivities,
     getActivityStatistics,
     getAlbumInfo,
+    getAllTags,
     getAssetInfo,
     searchAssets,
     updateAlbumInfo,
@@ -265,17 +266,17 @@
 
   const TAG_FILTER_LIMIT = 50;
 
-  // per-asset tags, cached for the lifetime of this page visit so re-opening the picker
-  // or changing the selection never re-fetches anything
+  // per-asset tags, cached for the lifetime of this page visit so re-checking an asset
+  // (e.g. after changing the tag selection) never re-fetches it
   const assetTagsCache = new Map<string, { id: string; value: string }[]>();
 
   let showTagFilter = $state(false);
   let isTagFilterPickerOpen = $state(false);
-  let isLoadingTagFilterOptions = $state(false);
-  let tagFilterScanProgress = $state(0);
-  let tagFilterAllAssets: AssetResponseDto[] = $state([]);
-  let tagFilterOptions: { id: string; value: string }[] = $state([]);
+  // brief: just fetching the full tag list, not scanning the album
+  let isLoadingTagFilterPickerOptions = $state(false);
+  let tagFilterPickerOptions: { id: string; value: string }[] = $state([]);
   let selectedTagFilterIds: string[] = $state([]);
+  let isLoadingTagFilterResults = $state(false);
   let tagFilterMatchedAssets: AssetResponseDto[] = $state([]);
   let tagFilterPage = $state(0);
   let tagFilterPagedAssets: AssetResponseDto[] = $state([]);
@@ -836,36 +837,9 @@
     }
   };
 
-  // fetches every asset's tags once (batched), so the picker can show only tags that
-  // actually exist in this album, and applying a selection afterward is instant
-  const scanAlbumTags = async () => {
-    isLoadingTagFilterOptions = true;
-    tagFilterScanProgress = 0;
-
-    try {
-      const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
-      tagFilterAllAssets = fullAlbum.assets;
-
-      for (let index = 0; index < tagFilterAllAssets.length; index += CONCURRENT_TAG_CHECKS) {
-        const batch = tagFilterAllAssets.slice(index, index + CONCURRENT_TAG_CHECKS);
-        await Promise.all(batch.map((asset) => getAssetTags(asset.id)));
-        tagFilterScanProgress = Math.min(index + CONCURRENT_TAG_CHECKS, tagFilterAllAssets.length);
-      }
-
-      const uniqueTags = new Map<string, { id: string; value: string }>();
-      for (const asset of tagFilterAllAssets) {
-        for (const tag of assetTagsCache.get(asset.id) ?? []) {
-          uniqueTags.set(tag.id, tag);
-        }
-      }
-      tagFilterOptions = [...uniqueTags.values()];
-    } catch (error) {
-      handleError(error, $t('errors.unable_to_load_album'));
-    } finally {
-      isLoadingTagFilterOptions = false;
-    }
-  };
-
+  // opens the picker right away using the full (small) system-wide tag list, rather than
+  // scanning every asset in the album up front just to know which tags to show - matches
+  // how every other filter view here works: prompt first, compute after you submit
   const openTagFilter = async () => {
     if (showTagFilter) {
       showTagFilter = false;
@@ -873,14 +847,22 @@
       return;
     }
 
-    if (tagFilterAllAssets.length === 0 && !isLoadingTagFilterOptions) {
-      await scanAlbumTags();
+    if (tagFilterPickerOptions.length === 0 && !isLoadingTagFilterPickerOptions) {
+      isLoadingTagFilterPickerOptions = true;
+      try {
+        const tags = await getAllTags();
+        tagFilterPickerOptions = tags.map((tag) => ({ id: tag.id, value: tag.value }));
+      } catch (error) {
+        handleError(error, $t('errors.unable_to_load_tags'));
+      } finally {
+        isLoadingTagFilterPickerOptions = false;
+      }
     }
 
     isTagFilterPickerOpen = true;
   };
 
-  const handleTagFilterApply = (tagIds: string[]) => {
+  const handleTagFilterApply = async (tagIds: string[]) => {
     isTagFilterPickerOpen = false;
     selectedTagFilterIds = tagIds;
 
@@ -897,14 +879,34 @@
     showLikesSort = false;
     showDurationFilter = false;
 
-    tagFilterMatchedAssets = tagFilterAllAssets.filter((asset) => {
-      const tags = assetTagsCache.get(asset.id) ?? [];
-      return tagIds.every((tagId) => tags.some((tag) => tag.id === tagId));
-    });
-
-    tagFilterPage = 0;
-    tagFilterPagedAssets = tagFilterMatchedAssets.slice(0, TAG_FILTER_LIMIT);
     showTagFilter = true;
+    isLoadingTagFilterResults = true;
+    tagFilterMatchedAssets = [];
+    tagFilterPage = 0;
+    tagFilterPagedAssets = [];
+
+    try {
+      const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
+      const matched: AssetResponseDto[] = [];
+
+      for (let index = 0; index < fullAlbum.assets.length; index += CONCURRENT_TAG_CHECKS) {
+        const batch = fullAlbum.assets.slice(index, index + CONCURRENT_TAG_CHECKS);
+        const results = await Promise.all(batch.map((asset) => getAssetTags(asset.id)));
+        for (const [batchIndex, tags] of results.entries()) {
+          if (tagIds.every((tagId) => tags.some((tag) => tag.id === tagId))) {
+            matched.push(batch[batchIndex]);
+          }
+        }
+      }
+
+      tagFilterMatchedAssets = matched;
+      tagFilterPagedAssets = matched.slice(0, TAG_FILTER_LIMIT);
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_load_album'));
+      showTagFilter = false;
+    } finally {
+      isLoadingTagFilterResults = false;
+    }
   };
 
   const hasMoreTagFilterAssets = $derived((tagFilterPage + 1) * TAG_FILTER_LIMIT < tagFilterMatchedAssets.length);
@@ -1369,15 +1371,6 @@
                     size="20"
                     padding="2"
                   />
-                  <CircleIconButton
-                    title={showTagFilter ? $t('close') : $t('filter_by_tags')}
-                    onclick={() => openTagFilter()}
-                    icon={showTagFilter ? mdiClose : mdiTagMultipleOutline}
-                    color={showTagFilter ? 'primary' : undefined}
-                    disabled={isLoadingTagFilterOptions}
-                    size="20"
-                    padding="2"
-                  />
                 </div>
               {/if}
 
@@ -1406,6 +1399,18 @@
                     onclick={handleOrganizeByTags}
                     icon={mdiAutoFix}
                     disabled={isOrganizing}
+                    size="20"
+                    padding="2"
+                  />
+                {/if}
+
+                {#if album.assetCount > 0}
+                  <CircleIconButton
+                    title={showTagFilter ? $t('close') : $t('filter_by_tags')}
+                    onclick={() => openTagFilter()}
+                    icon={showTagFilter ? mdiClose : mdiTagMultipleOutline}
+                    color={showTagFilter ? 'primary' : undefined}
+                    disabled={isLoadingTagFilterPickerOptions}
                     size="20"
                     padding="2"
                   />
@@ -1689,7 +1694,11 @@
             </button>
           </div>
 
-          {#if tagFilterPagedAssets.length === 0}
+          {#if isLoadingTagFilterResults}
+            <div class="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+          {:else if tagFilterPagedAssets.length === 0}
             <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
@@ -1705,14 +1714,6 @@
             {/if}
           {/if}
         </section>
-      {/if}
-
-      {#if isLoadingTagFilterOptions}
-        <p class="pt-2 text-center text-sm text-gray-500 dark:text-gray-400">
-          {$t('scanning_tags_progress', {
-            values: { checked: tagFilterScanProgress, total: tagFilterAllAssets.length },
-          })}
-        </p>
       {/if}
 
       <div
@@ -1934,7 +1935,7 @@
 
 {#if isTagFilterPickerOpen}
   <TagFilterModal
-    tagOptions={tagFilterOptions}
+    tagOptions={tagFilterPickerOptions}
     initialSelectedIds={selectedTagFilterIds}
     onApply={handleTagFilterApply}
     onClose={() => (isTagFilterPickerOpen = false)}

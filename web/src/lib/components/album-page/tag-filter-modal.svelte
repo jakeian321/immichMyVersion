@@ -7,7 +7,6 @@
   import { SvelteSet } from 'svelte/reactivity';
 
   interface Props {
-    /** tags actually present among this album's assets, not every tag in the system */
     tagOptions: { id: string; value: string }[];
     initialSelectedIds?: string[];
     onApply: (tagIds: string[]) => void;
@@ -34,7 +33,7 @@
   <p class="text-sm text-gray-500 dark:text-gray-300">{$t('filter_by_tags_hint')}</p>
 
   {#if sortedOptions.length === 0}
-    <p class="py-4 text-sm">{$t('no_tags_in_album')}</p>
+    <p class="py-4 text-sm">{$t('no_tags_exist')}</p>
   {:else}
     <div class="my-4 flex max-h-96 flex-col gap-3 overflow-y-auto">
       {#each sortedOptions as tag (tag.id)}
