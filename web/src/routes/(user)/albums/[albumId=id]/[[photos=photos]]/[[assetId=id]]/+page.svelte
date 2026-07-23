@@ -2,6 +2,7 @@
   import { afterNavigate, goto, onNavigate } from '$app/navigation';
   import { scrollMemoryClearer } from '$lib/actions/scroll-memory';
   import AddToCollectionsModal from '$lib/components/album-page/add-to-collections-modal.svelte';
+  import TagFilterModal from '$lib/components/album-page/tag-filter-modal.svelte';
   import AlbumDescription from '$lib/components/album-page/album-description.svelte';
   import AlbumOptions from '$lib/components/album-page/album-options.svelte';
   import AlbumSummary from '$lib/components/album-page/album-summary.svelte';
@@ -94,6 +95,7 @@
     mdiNumeric,
     mdiSortClockAscendingOutline,
     mdiSortClockDescendingOutline,
+    mdiTagMultipleOutline,
     mdiTimerOutline,
   } from '@mdi/js';
   import { Input } from '@immich/ui';
@@ -261,6 +263,26 @@
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const durationFilterViewport: Viewport = $state({ width: 0, height: 100_000 });
 
+  const TAG_FILTER_LIMIT = 50;
+
+  // per-asset tags, cached for the lifetime of this page visit so re-opening the picker
+  // or changing the selection never re-fetches anything
+  const assetTagsCache = new Map<string, { id: string; value: string }[]>();
+
+  let showTagFilter = $state(false);
+  let isTagFilterPickerOpen = $state(false);
+  let isLoadingTagFilterOptions = $state(false);
+  let tagFilterScanProgress = $state(0);
+  let tagFilterAllAssets: AssetResponseDto[] = $state([]);
+  let tagFilterOptions: { id: string; value: string }[] = $state([]);
+  let selectedTagFilterIds: string[] = $state([]);
+  let tagFilterMatchedAssets: AssetResponseDto[] = $state([]);
+  let tagFilterPage = $state(0);
+  let tagFilterPagedAssets: AssetResponseDto[] = $state([]);
+  // height is set arbitrarily large so GalleryViewer renders every asset instead of
+  // virtualizing based on window scroll position, which doesn't track this view's scroll container
+  const tagFilterViewport: Viewport = $state({ width: 0, height: 100_000 });
+
   const NAME_SORT_LIMIT = 50;
 
   let showNameSort = $state(false);
@@ -280,6 +302,7 @@
   const likesSortInteraction = new AssetInteraction();
   const nameSortInteraction = new AssetInteraction();
   const durationFilterInteraction = new AssetInteraction();
+  const tagFilterInteraction = new AssetInteraction();
 
   afterNavigate(({ from }) => {
     let url: string | undefined = from?.url?.pathname;
@@ -518,6 +541,7 @@
     showNameSort = false;
     showLikesSort = false;
     showDurationFilter = false;
+    showTagFilter = false;
 
     showDurationSort = true;
     isLoadingDurationSort = true;
@@ -597,6 +621,7 @@
     showNameSort = false;
     showLikesSort = false;
     showDurationFilter = false;
+    showTagFilter = false;
 
     showFilenameDateSort = true;
     isLoadingFilenameDateSort = true;
@@ -670,6 +695,7 @@
     showFilenameDateSort = false;
     showNameSort = false;
     showDurationFilter = false;
+    showTagFilter = false;
 
     showLikesSort = true;
     isLoadingLikesSort = true;
@@ -754,6 +780,7 @@
     showFilenameDateSort = false;
     showNameSort = false;
     showLikesSort = false;
+    showTagFilter = false;
 
     showDurationFilter = true;
     isLoadingDurationFilter = true;
@@ -794,6 +821,102 @@
     }
   };
 
+  const getAssetTags = async (assetId: string): Promise<{ id: string; value: string }[]> => {
+    const cached = assetTagsCache.get(assetId);
+    if (cached !== undefined) {
+      return cached;
+    }
+    try {
+      const info = await getAssetInfo({ id: assetId });
+      const tags = (info.tags ?? []).map((tag) => ({ id: tag.id, value: tag.value }));
+      assetTagsCache.set(assetId, tags);
+      return tags;
+    } catch {
+      return [];
+    }
+  };
+
+  // fetches every asset's tags once (batched), so the picker can show only tags that
+  // actually exist in this album, and applying a selection afterward is instant
+  const scanAlbumTags = async () => {
+    isLoadingTagFilterOptions = true;
+    tagFilterScanProgress = 0;
+
+    try {
+      const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
+      tagFilterAllAssets = fullAlbum.assets;
+
+      for (let index = 0; index < tagFilterAllAssets.length; index += CONCURRENT_TAG_CHECKS) {
+        const batch = tagFilterAllAssets.slice(index, index + CONCURRENT_TAG_CHECKS);
+        await Promise.all(batch.map((asset) => getAssetTags(asset.id)));
+        tagFilterScanProgress = Math.min(index + CONCURRENT_TAG_CHECKS, tagFilterAllAssets.length);
+      }
+
+      const uniqueTags = new Map<string, { id: string; value: string }>();
+      for (const asset of tagFilterAllAssets) {
+        for (const tag of assetTagsCache.get(asset.id) ?? []) {
+          uniqueTags.set(tag.id, tag);
+        }
+      }
+      tagFilterOptions = [...uniqueTags.values()];
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_load_album'));
+    } finally {
+      isLoadingTagFilterOptions = false;
+    }
+  };
+
+  const openTagFilter = async () => {
+    if (showTagFilter) {
+      showTagFilter = false;
+      cancelMultiselect(tagFilterInteraction);
+      return;
+    }
+
+    if (tagFilterAllAssets.length === 0 && !isLoadingTagFilterOptions) {
+      await scanAlbumTags();
+    }
+
+    isTagFilterPickerOpen = true;
+  };
+
+  const handleTagFilterApply = (tagIds: string[]) => {
+    isTagFilterPickerOpen = false;
+    selectedTagFilterIds = tagIds;
+
+    if (tagIds.length === 0) {
+      showTagFilter = false;
+      return;
+    }
+
+    // the sort/filter views render in a fixed priority order, so close the others to
+    // make sure this one actually becomes visible
+    showDurationSort = false;
+    showFilenameDateSort = false;
+    showNameSort = false;
+    showLikesSort = false;
+    showDurationFilter = false;
+
+    tagFilterMatchedAssets = tagFilterAllAssets.filter((asset) => {
+      const tags = assetTagsCache.get(asset.id) ?? [];
+      return tagIds.every((tagId) => tags.some((tag) => tag.id === tagId));
+    });
+
+    tagFilterPage = 0;
+    tagFilterPagedAssets = tagFilterMatchedAssets.slice(0, TAG_FILTER_LIMIT);
+    showTagFilter = true;
+  };
+
+  const hasMoreTagFilterAssets = $derived((tagFilterPage + 1) * TAG_FILTER_LIMIT < tagFilterMatchedAssets.length);
+
+  const loadNextTagFilterPage = () => {
+    tagFilterPage += 1;
+    tagFilterPagedAssets = tagFilterMatchedAssets.slice(
+      tagFilterPage * TAG_FILTER_LIMIT,
+      (tagFilterPage + 1) * TAG_FILTER_LIMIT,
+    );
+  };
+
   // natural-order compare so numbered filenames like a000000002_... sort by their
   // sequence number rather than as plain strings
   const sortByName = (assets: AssetResponseDto[], direction: 'desc' | 'asc') =>
@@ -831,6 +954,7 @@
     showFilenameDateSort = false;
     showLikesSort = false;
     showDurationFilter = false;
+    showTagFilter = false;
 
     showNameSort = true;
     isLoadingNameSort = true;
@@ -1245,6 +1369,15 @@
                     size="20"
                     padding="2"
                   />
+                  <CircleIconButton
+                    title={showTagFilter ? $t('close') : $t('filter_by_tags')}
+                    onclick={() => openTagFilter()}
+                    icon={showTagFilter ? mdiClose : mdiTagMultipleOutline}
+                    color={showTagFilter ? 'primary' : undefined}
+                    disabled={isLoadingTagFilterOptions}
+                    size="20"
+                    padding="2"
+                  />
                 </div>
               {/if}
 
@@ -1541,6 +1674,45 @@
             {/if}
           {/if}
         </section>
+      {:else if showTagFilter}
+        <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={tagFilterViewport.width}>
+          <div class="flex items-center justify-between pb-2">
+            <p class="text-sm text-gray-500 dark:text-gray-400">
+              {$t('items_count', { values: { count: tagFilterMatchedAssets.length } })}
+            </p>
+            <button
+              type="button"
+              class="text-sm text-immich-primary dark:text-immich-dark-primary"
+              onclick={() => (isTagFilterPickerOpen = true)}
+            >
+              {$t('edit_filters')}
+            </button>
+          </div>
+
+          {#if tagFilterPagedAssets.length === 0}
+            <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
+          {:else}
+            <GalleryViewer
+              bind:assets={tagFilterPagedAssets}
+              assetInteraction={tagFilterInteraction}
+              viewport={tagFilterViewport}
+              videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
+            />
+            {#if hasMoreTagFilterAssets}
+              <div class="flex justify-center pb-4">
+                <Button onclick={loadNextTagFilterPage}>{$t('next')}</Button>
+              </div>
+            {/if}
+          {/if}
+        </section>
+      {/if}
+
+      {#if isLoadingTagFilterOptions}
+        <p class="pt-2 text-center text-sm text-gray-500 dark:text-gray-400">
+          {$t('scanning_tags_progress', {
+            values: { checked: tagFilterScanProgress, total: tagFilterAllAssets.length },
+          })}
+        </p>
       {/if}
 
       <div
@@ -1550,7 +1722,8 @@
           showFilenameDateSort ||
           showNameSort ||
           showLikesSort ||
-          showDurationFilter}
+          showDurationFilter ||
+          showTagFilter}
         class="h-full"
       >
         <AssetGrid
@@ -1757,6 +1930,15 @@
       <Button type="submit" form="duration-filter-form" fullwidth>{$t('search')}</Button>
     {/snippet}
   </FullScreenModal>
+{/if}
+
+{#if isTagFilterPickerOpen}
+  <TagFilterModal
+    tagOptions={tagFilterOptions}
+    initialSelectedIds={selectedTagFilterIds}
+    onApply={handleTagFilterApply}
+    onClose={() => (isTagFilterPickerOpen = false)}
+  />
 {/if}
 
 {#if viewMode === AlbumPageViewMode.SELECT_USERS}
