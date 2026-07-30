@@ -8,7 +8,8 @@
   import { removeTag, tagAssets } from '$lib/utils/asset-utils';
   import { handleError } from '$lib/utils/handle-error';
   import { navigate } from '$lib/utils/navigation';
-  import { getAllTags, getAssetInfo, upsertTags, type AssetResponseDto } from '@immich/sdk';
+  import { upsertTagByValue } from '$lib/utils/tag-utils';
+  import { getAllTags, getAssetInfo, type AssetResponseDto } from '@immich/sdk';
   import { mdiClose } from '@mdi/js';
   import { onDestroy, onMount } from 'svelte';
   import { t } from 'svelte-i18n';
@@ -251,7 +252,7 @@
     if (reviewTagIds[value]) {
       return reviewTagIds[value];
     }
-    const [created] = await upsertTags({ tagUpsertDto: { tags: [value] } });
+    const created = await upsertTagByValue(value);
     if (created) {
       reviewTagIds = { ...reviewTagIds, [value]: created.id };
       return created.id;

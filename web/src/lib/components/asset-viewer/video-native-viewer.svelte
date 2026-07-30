@@ -27,14 +27,8 @@
   import { AppRoute } from '$lib/constants';
   import { isSharedLink } from '$lib/utils';
   import { removeTag, tagAssets } from '$lib/utils/asset-utils';
-  import {
-    AssetTypeEnum,
-    deleteAssets,
-    getAssetInfo,
-    type AssetResponseDto,
-    getAllTags,
-    upsertTags,
-  } from '@immich/sdk';
+  import { upsertTagByValue } from '$lib/utils/tag-utils';
+  import { AssetTypeEnum, deleteAssets, getAssetInfo, type AssetResponseDto, getAllTags } from '@immich/sdk';
   import {
     mdiClose,
     mdiPlus,
@@ -871,7 +865,7 @@
     try {
       let tagId = availableTagsMap[tagValue];
       if (!tagId) {
-        const [created] = await upsertTags({ tagUpsertDto: { tags: [tagValue] } });
+        const created = await upsertTagByValue(tagValue);
         if (created) {
           tagId = created.id;
           availableTagsMap = { ...availableTagsMap, [tagValue]: tagId };

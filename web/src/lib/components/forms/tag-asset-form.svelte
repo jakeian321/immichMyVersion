@@ -5,7 +5,8 @@
   import Combobox, { type ComboBoxOption } from '../shared-components/combobox.svelte';
   import FullScreenModal from '../shared-components/full-screen-modal.svelte';
   import { onMount } from 'svelte';
-  import { getAllTags, upsertTags, type TagResponseDto } from '@immich/sdk';
+  import { upsertTagByValue } from '$lib/utils/tag-utils';
+  import { getAllTags, type TagResponseDto } from '@immich/sdk';
   import Icon from '$lib/components/elements/icon.svelte';
   import { SvelteSet } from 'svelte/reactivity';
 
@@ -36,9 +37,13 @@
     if (option.id) {
       selectedIds.add(option.value);
     } else {
-      const [newTag] = await upsertTags({ tagUpsertDto: { tags: [option.label] } });
-      allTags.push(newTag);
-      selectedIds.add(newTag.id);
+      const newTag = await upsertTagByValue(option.label, allTags);
+      if (newTag) {
+        if (!allTags.some(({ id }) => id === newTag.id)) {
+          allTags.push(newTag);
+        }
+        selectedIds.add(newTag.id);
+      }
     }
   };
 
@@ -105,7 +110,8 @@
   import Combobox, { type ComboBoxOption } from '../shared-components/combobox.svelte';
   import FullScreenModal from '../shared-components/full-screen-modal.svelte';
   import { onMount } from 'svelte';
-  import { getAllTags, upsertTags, type TagResponseDto } from '@immich/sdk';
+  import { upsertTagByValue } from '$lib/utils/tag-utils';
+  import { getAllTags, type TagResponseDto } from '@immich/sdk';
   import Icon from '$lib/components/elements/icon.svelte';
   import { SvelteSet } from 'svelte/reactivity';
 
@@ -166,9 +172,13 @@
     if (option.id) {
       selectedIds.add(option.value);
     } else {
-      const [newTag] = await upsertTags({ tagUpsertDto: { tags: [option.label] } });
-      allTags.push(newTag);
-      selectedIds.add(newTag.id);
+      const newTag = await upsertTagByValue(option.label, allTags);
+      if (newTag) {
+        if (!allTags.some(({ id }) => id === newTag.id)) {
+          allTags.push(newTag);
+        }
+        selectedIds.add(newTag.id);
+      }
     }
   };
 

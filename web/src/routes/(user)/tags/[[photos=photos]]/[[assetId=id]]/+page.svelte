@@ -19,7 +19,8 @@
   import { AssetInteraction } from '$lib/stores/asset-interaction.svelte';
   import { AssetStore } from '$lib/stores/assets-store.svelte';
   import { buildTree, normalizeTreePath } from '$lib/utils/tree-utils';
-  import { deleteTag, getAllTags, updateTag, upsertTags, type TagResponseDto } from '@immich/sdk';
+  import { upsertTagByValue } from '$lib/utils/tag-utils';
+  import { deleteTag, getAllTags, updateTag, type TagResponseDto } from '@immich/sdk';
   import { Button, HStack, Text } from '@immich/ui';
   import { mdiPencil, mdiPlus, mdiTag, mdiTagMultiple, mdiTrashCanOutline } from '@mdi/js';
   import { t } from 'svelte-i18n';
@@ -99,12 +100,14 @@
     }
 
     if (isNewOpen && newTagValue) {
-      const [newTag] = await upsertTags({ tagUpsertDto: { tags: [newTagValue] } });
+      const newTag = await upsertTagByValue(newTagValue, tags);
 
-      notificationController.show({
-        message: $t('tag_created', { values: { tag: newTag.value } }),
-        type: NotificationType.Info,
-      });
+      if (newTag) {
+        notificationController.show({
+          message: $t('tag_created', { values: { tag: newTag.value } }),
+          type: NotificationType.Info,
+        });
+      }
 
       tags = await getAllTags();
       isNewOpen = false;
