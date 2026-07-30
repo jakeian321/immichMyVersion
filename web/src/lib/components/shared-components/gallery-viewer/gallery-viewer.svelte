@@ -303,10 +303,13 @@
       const shortcuts: ShortcutOptions[] = [
         { shortcut: { key: '?', shift: true }, onShortcut: () => (showShortcuts = !showShortcuts) },
         { shortcut: { key: '/' }, onShortcut: () => goto(AppRoute.EXPLORE) },
-        { shortcut: { key: 'A', ctrl: true }, onShortcut: () => selectAllAssets() },
         { shortcut: { key: 'ArrowRight' }, preventDefault: false, onShortcut: focusNextAsset },
         { shortcut: { key: 'ArrowLeft' }, preventDefault: false, onShortcut: focusPreviousAsset },
       ];
+
+      if (!disableAssetSelect) {
+        shortcuts.push({ shortcut: { key: 'A', ctrl: true }, onShortcut: () => selectAllAssets() });
+      }
 
       if (assetInteraction.selectionActive) {
         shortcuts.push(
@@ -497,13 +500,13 @@
           <Thumbnail
             readonly={disableAssetSelect}
             onClick={(asset) => {
-              if (assetInteraction.selectionActive) {
+              if (!disableAssetSelect && assetInteraction.selectionActive) {
                 handleSelectAssets(asset);
                 return;
               }
               void viewAssetHandler(asset);
             }}
-            onSelect={(asset) => handleSelectAssets(asset)}
+            onSelect={disableAssetSelect ? undefined : (asset) => handleSelectAssets(asset)}
             onMouseEvent={() => assetMouseEventHandler(asset)}
             handleFocus={() => assetOnFocusHandler(asset)}
             {showArchiveIcon}

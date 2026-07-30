@@ -2,6 +2,7 @@
   import { afterNavigate, goto, onNavigate } from '$app/navigation';
   import { scrollMemoryClearer } from '$lib/actions/scroll-memory';
   import AddToCollectionsModal from '$lib/components/album-page/add-to-collections-modal.svelte';
+  import AssetPageControls from '$lib/components/album-page/asset-page-controls.svelte';
   import TagFilterModal from '$lib/components/album-page/tag-filter-modal.svelte';
   import AlbumDescription from '$lib/components/album-page/album-description.svelte';
   import AlbumOptions from '$lib/components/album-page/album-options.svelte';
@@ -48,6 +49,7 @@
   import { timeToSeconds } from '$lib/utils/date-time';
   import { openFileUploadDialog } from '$lib/utils/file-uploader';
   import { handleError } from '$lib/utils/handle-error';
+  import { PagedAssetView } from '$lib/utils/paged-asset-view.svelte';
   import {
     isAlbumsRoute,
     isPeopleRoute,
@@ -159,7 +161,6 @@
   let reactions: ActivityResponseDto[] = $state([]);
   let albumOrder: AssetOrder | undefined = $state(data.album.order);
 
-  const DURATION_SORT_LIMIT = 50;
   // these sort views render every asset at once (no virtualization), so on open or when
   // navigating between assets, give the video player a moment to settle before autoplaying
   // instead of competing with everything else still mounted for decode resources
@@ -187,84 +188,47 @@
     }
   };
 
-  // walks `candidates` from `startIndex`, collecting up to `count` untagged assets;
-  // returns them plus the index to resume from for the next page
-  const collectUntaggedAssets = async (candidates: AssetResponseDto[], startIndex: number, count: number) => {
-    const untagged: AssetResponseDto[] = [];
-    let index = startIndex;
-
-    while (index < candidates.length && untagged.length < count) {
-      const batch = candidates.slice(index, index + CONCURRENT_TAG_CHECKS);
-      const results = await Promise.all(batch.map((asset) => isAssetTagged(asset.id)));
-
-      for (const [batchIndex, tagged] of results.entries()) {
-        index++;
-        if (!tagged) {
-          untagged.push(batch[batchIndex]);
-          if (untagged.length === count) {
-            break;
-          }
-        }
-      }
-    }
-
-    return { untagged, nextIndex: index };
-  };
+  const isUntaggedAsset = async (asset: AssetResponseDto) => !(await isAssetTagged(asset.id));
 
   let showDurationSort = $state(false);
   let durationSortDirection: 'desc' | 'asc' = $state('desc');
-  let isLoadingDurationSort = $state(false);
-  let durationSortedAssets: AssetResponseDto[] = $state([]);
   let durationSortAllAssets: AssetResponseDto[] = $state([]);
-  let durationSortScanIndex = $state(0);
+  const durationSortView = new PagedAssetView();
   // height is set arbitrarily large so GalleryViewer renders every asset instead of
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const durationSortViewport: Viewport = $state({ width: 0, height: 100_000 });
 
-  const FILENAME_DATE_SORT_LIMIT = 50;
   // matches an 8-digit YYYYMMDD run in a filename, e.g. "... - 20240919 - ..." without
   // matching into longer digit runs like a numeric post ID
   const FILENAME_DATE_PATTERN = /(?<!\d)(\d{4})(\d{2})(\d{2})(?!\d)/;
 
   let showFilenameDateSort = $state(false);
   let filenameDateSortDirection: 'desc' | 'asc' = $state('desc');
-  let isLoadingFilenameDateSort = $state(false);
-  let filenameDateSortedAssets: AssetResponseDto[] = $state([]);
   let filenameDateSortAllAssets: AssetResponseDto[] = $state([]);
-  let filenameDateSortScanIndex = $state(0);
+  const filenameDateSortView = new PagedAssetView();
   // height is set arbitrarily large so GalleryViewer renders every asset instead of
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const filenameDateSortViewport: Viewport = $state({ width: 0, height: 100_000 });
 
-  const LIKES_SORT_LIMIT = 50;
   // matches a likes count written into the filename, e.g. "... - 1902 likes - ..."
   const FILENAME_LIKES_PATTERN = /(\d+)\s*likes/i;
 
   let showLikesSort = $state(false);
   let likesSortDirection: 'desc' | 'asc' = $state('desc');
-  let isLoadingLikesSort = $state(false);
-  let likesSortedAssets: AssetResponseDto[] = $state([]);
   let likesSortAllAssets: AssetResponseDto[] = $state([]);
-  let likesSortScanIndex = $state(0);
+  const likesSortView = new PagedAssetView();
   // height is set arbitrarily large so GalleryViewer renders every asset instead of
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const likesSortViewport: Viewport = $state({ width: 0, height: 100_000 });
 
-  const DURATION_FILTER_LIMIT = 50;
-
   let showDurationFilter = $state(false);
-  let isLoadingDurationFilter = $state(false);
-  let durationFilterAssets: AssetResponseDto[] = $state([]);
-  let durationFilterAllAssets: AssetResponseDto[] = $state([]);
-  let durationFilterScanIndex = $state(0);
+  const durationFilterView = new PagedAssetView();
   let durationFilterRange = $state<{ min: number; max: number } | null>(null);
   let isDurationFilterPromptOpen = $state(false);
   let durationFilterInput = $state('');
   // height is set arbitrarily large so GalleryViewer renders every asset instead of
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const durationFilterViewport: Viewport = $state({ width: 0, height: 100_000 });
-
-  const TAG_FILTER_LIMIT = 50;
 
   // per-asset tags, cached for the lifetime of this page visit so re-checking an asset
   // (e.g. after changing the tag selection) never re-fetches it
@@ -276,22 +240,15 @@
   let isLoadingTagFilterPickerOptions = $state(false);
   let tagFilterPickerOptions: { id: string; value: string }[] = $state([]);
   let selectedTagFilterIds: string[] = $state([]);
-  let isLoadingTagFilterResults = $state(false);
-  let tagFilterMatchedAssets: AssetResponseDto[] = $state([]);
-  let tagFilterPage = $state(0);
-  let tagFilterPagedAssets: AssetResponseDto[] = $state([]);
+  const tagFilterView = new PagedAssetView();
   // height is set arbitrarily large so GalleryViewer renders every asset instead of
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const tagFilterViewport: Viewport = $state({ width: 0, height: 100_000 });
 
-  const NAME_SORT_LIMIT = 50;
-
   let showNameSort = $state(false);
   let nameSortDirection: 'desc' | 'asc' = $state('asc');
-  let isLoadingNameSort = $state(false);
-  let nameSortedAssets: AssetResponseDto[] = $state([]);
   let nameSortAllAssets: AssetResponseDto[] = $state([]);
-  let nameSortScanIndex = $state(0);
+  const nameSortView = new PagedAssetView();
   // height is set arbitrarily large so GalleryViewer renders every asset instead of
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const nameSortViewport: Viewport = $state({ width: 0, height: 100_000 });
@@ -529,12 +486,8 @@
 
     if (showDurationSort) {
       cancelMultiselect(durationSortInteraction);
-      isLoadingDurationSort = true;
       durationSortAllAssets = sortByDuration(durationSortAllAssets, direction);
-      const collected = await collectUntaggedAssets(durationSortAllAssets, 0, DURATION_SORT_LIMIT);
-      durationSortedAssets = collected.untagged;
-      durationSortScanIndex = collected.nextIndex;
-      isLoadingDurationSort = false;
+      durationSortView.scan(durationSortAllAssets, isUntaggedAsset, CONCURRENT_TAG_CHECKS);
       return;
     }
 
@@ -545,32 +498,17 @@
     showTagFilter = false;
 
     showDurationSort = true;
-    isLoadingDurationSort = true;
-    durationSortedAssets = [];
     durationSortAllAssets = [];
-    durationSortScanIndex = 0;
+    durationSortView.beginLoading();
 
     try {
       const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
       durationSortAllAssets = sortByDuration(fullAlbum.assets, direction);
-      const collected = await collectUntaggedAssets(durationSortAllAssets, 0, DURATION_SORT_LIMIT);
-      durationSortedAssets = collected.untagged;
-      durationSortScanIndex = collected.nextIndex;
+      durationSortView.scan(durationSortAllAssets, isUntaggedAsset, CONCURRENT_TAG_CHECKS);
     } catch (error) {
       handleError(error, $t('errors.unable_to_load_album'));
+      durationSortView.reset();
       showDurationSort = false;
-    } finally {
-      isLoadingDurationSort = false;
-    }
-  };
-
-  const hasMoreDurationSortedAssets = $derived(durationSortScanIndex < durationSortAllAssets.length);
-
-  const loadNextDurationSortPage = async () => {
-    const collected = await collectUntaggedAssets(durationSortAllAssets, durationSortScanIndex, DURATION_SORT_LIMIT);
-    durationSortScanIndex = collected.nextIndex;
-    if (collected.untagged.length > 0) {
-      durationSortedAssets = collected.untagged;
     }
   };
 
@@ -609,12 +547,8 @@
 
     if (showFilenameDateSort) {
       cancelMultiselect(filenameDateSortInteraction);
-      isLoadingFilenameDateSort = true;
       filenameDateSortAllAssets = sortByFilenameDate(filenameDateSortAllAssets, direction);
-      const collected = await collectUntaggedAssets(filenameDateSortAllAssets, 0, FILENAME_DATE_SORT_LIMIT);
-      filenameDateSortedAssets = collected.untagged;
-      filenameDateSortScanIndex = collected.nextIndex;
-      isLoadingFilenameDateSort = false;
+      filenameDateSortView.scan(filenameDateSortAllAssets, isUntaggedAsset, CONCURRENT_TAG_CHECKS);
       return;
     }
 
@@ -625,36 +559,17 @@
     showTagFilter = false;
 
     showFilenameDateSort = true;
-    isLoadingFilenameDateSort = true;
-    filenameDateSortedAssets = [];
     filenameDateSortAllAssets = [];
-    filenameDateSortScanIndex = 0;
+    filenameDateSortView.beginLoading();
 
     try {
       const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
       filenameDateSortAllAssets = sortByFilenameDate(fullAlbum.assets, direction);
-      const collected = await collectUntaggedAssets(filenameDateSortAllAssets, 0, FILENAME_DATE_SORT_LIMIT);
-      filenameDateSortedAssets = collected.untagged;
-      filenameDateSortScanIndex = collected.nextIndex;
+      filenameDateSortView.scan(filenameDateSortAllAssets, isUntaggedAsset, CONCURRENT_TAG_CHECKS);
     } catch (error) {
       handleError(error, $t('errors.unable_to_load_album'));
+      filenameDateSortView.reset();
       showFilenameDateSort = false;
-    } finally {
-      isLoadingFilenameDateSort = false;
-    }
-  };
-
-  const hasMoreFilenameDateSortedAssets = $derived(filenameDateSortScanIndex < filenameDateSortAllAssets.length);
-
-  const loadNextFilenameDateSortPage = async () => {
-    const collected = await collectUntaggedAssets(
-      filenameDateSortAllAssets,
-      filenameDateSortScanIndex,
-      FILENAME_DATE_SORT_LIMIT,
-    );
-    filenameDateSortScanIndex = collected.nextIndex;
-    if (collected.untagged.length > 0) {
-      filenameDateSortedAssets = collected.untagged;
     }
   };
 
@@ -681,12 +596,8 @@
 
     if (showLikesSort) {
       cancelMultiselect(likesSortInteraction);
-      isLoadingLikesSort = true;
       likesSortAllAssets = sortByLikes(likesSortAllAssets, direction);
-      const collected = await collectUntaggedAssets(likesSortAllAssets, 0, LIKES_SORT_LIMIT);
-      likesSortedAssets = collected.untagged;
-      likesSortScanIndex = collected.nextIndex;
-      isLoadingLikesSort = false;
+      likesSortView.scan(likesSortAllAssets, isUntaggedAsset, CONCURRENT_TAG_CHECKS);
       return;
     }
 
@@ -699,32 +610,17 @@
     showTagFilter = false;
 
     showLikesSort = true;
-    isLoadingLikesSort = true;
-    likesSortedAssets = [];
     likesSortAllAssets = [];
-    likesSortScanIndex = 0;
+    likesSortView.beginLoading();
 
     try {
       const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
       likesSortAllAssets = sortByLikes(fullAlbum.assets, direction);
-      const collected = await collectUntaggedAssets(likesSortAllAssets, 0, LIKES_SORT_LIMIT);
-      likesSortedAssets = collected.untagged;
-      likesSortScanIndex = collected.nextIndex;
+      likesSortView.scan(likesSortAllAssets, isUntaggedAsset, CONCURRENT_TAG_CHECKS);
     } catch (error) {
       handleError(error, $t('errors.unable_to_load_album'));
+      likesSortView.reset();
       showLikesSort = false;
-    } finally {
-      isLoadingLikesSort = false;
-    }
-  };
-
-  const hasMoreLikesSortedAssets = $derived(likesSortScanIndex < likesSortAllAssets.length);
-
-  const loadNextLikesSortPage = async () => {
-    const collected = await collectUntaggedAssets(likesSortAllAssets, likesSortScanIndex, LIKES_SORT_LIMIT);
-    likesSortScanIndex = collected.nextIndex;
-    if (collected.untagged.length > 0) {
-      likesSortedAssets = collected.untagged;
     }
   };
 
@@ -784,41 +680,21 @@
     showTagFilter = false;
 
     showDurationFilter = true;
-    isLoadingDurationFilter = true;
-    durationFilterAssets = [];
-    durationFilterAllAssets = [];
-    durationFilterScanIndex = 0;
+    durationFilterView.beginLoading();
 
     try {
       const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
-      durationFilterAllAssets = fullAlbum.assets
+      const candidates = fullAlbum.assets
         .filter((asset) => {
           const seconds = timeToSeconds(asset.duration ?? '0:00:00.00000');
           return seconds >= range.min && seconds <= range.max;
         })
         .sort((a, b) => timeToSeconds(a.duration) - timeToSeconds(b.duration));
-      const collected = await collectUntaggedAssets(durationFilterAllAssets, 0, DURATION_FILTER_LIMIT);
-      durationFilterAssets = collected.untagged;
-      durationFilterScanIndex = collected.nextIndex;
+      durationFilterView.scan(candidates, isUntaggedAsset, CONCURRENT_TAG_CHECKS);
     } catch (error) {
       handleError(error, $t('errors.unable_to_load_album'));
+      durationFilterView.reset();
       showDurationFilter = false;
-    } finally {
-      isLoadingDurationFilter = false;
-    }
-  };
-
-  const hasMoreDurationFilterAssets = $derived(durationFilterScanIndex < durationFilterAllAssets.length);
-
-  const loadNextDurationFilterPage = async () => {
-    const collected = await collectUntaggedAssets(
-      durationFilterAllAssets,
-      durationFilterScanIndex,
-      DURATION_FILTER_LIMIT,
-    );
-    durationFilterScanIndex = collected.nextIndex;
-    if (collected.untagged.length > 0) {
-      durationFilterAssets = collected.untagged;
     }
   };
 
@@ -880,43 +756,21 @@
     showDurationFilter = false;
 
     showTagFilter = true;
-    isLoadingTagFilterResults = true;
-    tagFilterMatchedAssets = [];
-    tagFilterPage = 0;
-    tagFilterPagedAssets = [];
+    tagFilterView.beginLoading();
 
     try {
       const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
-      const matched: AssetResponseDto[] = [];
-
-      for (let index = 0; index < fullAlbum.assets.length; index += CONCURRENT_TAG_CHECKS) {
-        const batch = fullAlbum.assets.slice(index, index + CONCURRENT_TAG_CHECKS);
-        const results = await Promise.all(batch.map((asset) => getAssetTags(asset.id)));
-        for (const [batchIndex, tags] of results.entries()) {
-          if (tagIds.every((tagId) => tags.some((tag) => tag.id === tagId))) {
-            matched.push(batch[batchIndex]);
-          }
-        }
-      }
-
-      tagFilterMatchedAssets = matched;
-      tagFilterPagedAssets = matched.slice(0, TAG_FILTER_LIMIT);
+      // AND logic: an asset only matches when it carries every selected tag
+      const hasEverySelectedTag = async (asset: AssetResponseDto) => {
+        const tags = await getAssetTags(asset.id);
+        return tagIds.every((tagId) => tags.some((tag) => tag.id === tagId));
+      };
+      tagFilterView.scan(fullAlbum.assets, hasEverySelectedTag, CONCURRENT_TAG_CHECKS);
     } catch (error) {
       handleError(error, $t('errors.unable_to_load_album'));
+      tagFilterView.reset();
       showTagFilter = false;
-    } finally {
-      isLoadingTagFilterResults = false;
     }
-  };
-
-  const hasMoreTagFilterAssets = $derived((tagFilterPage + 1) * TAG_FILTER_LIMIT < tagFilterMatchedAssets.length);
-
-  const loadNextTagFilterPage = () => {
-    tagFilterPage += 1;
-    tagFilterPagedAssets = tagFilterMatchedAssets.slice(
-      tagFilterPage * TAG_FILTER_LIMIT,
-      (tagFilterPage + 1) * TAG_FILTER_LIMIT,
-    );
   };
 
   // natural-order compare so numbered filenames like a000000002_... sort by their
@@ -941,12 +795,8 @@
 
     if (showNameSort) {
       cancelMultiselect(nameSortInteraction);
-      isLoadingNameSort = true;
       nameSortAllAssets = sortByName(nameSortAllAssets, direction);
-      const collected = await collectUntaggedAssets(nameSortAllAssets, 0, NAME_SORT_LIMIT);
-      nameSortedAssets = collected.untagged;
-      nameSortScanIndex = collected.nextIndex;
-      isLoadingNameSort = false;
+      nameSortView.scan(nameSortAllAssets, isUntaggedAsset, CONCURRENT_TAG_CHECKS);
       return;
     }
 
@@ -959,32 +809,17 @@
     showTagFilter = false;
 
     showNameSort = true;
-    isLoadingNameSort = true;
-    nameSortedAssets = [];
     nameSortAllAssets = [];
-    nameSortScanIndex = 0;
+    nameSortView.beginLoading();
 
     try {
       const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
       nameSortAllAssets = sortByName(fullAlbum.assets, direction);
-      const collected = await collectUntaggedAssets(nameSortAllAssets, 0, NAME_SORT_LIMIT);
-      nameSortedAssets = collected.untagged;
-      nameSortScanIndex = collected.nextIndex;
+      nameSortView.scan(nameSortAllAssets, isUntaggedAsset, CONCURRENT_TAG_CHECKS);
     } catch (error) {
       handleError(error, $t('errors.unable_to_load_album'));
+      nameSortView.reset();
       showNameSort = false;
-    } finally {
-      isLoadingNameSort = false;
-    }
-  };
-
-  const hasMoreNameSortedAssets = $derived(nameSortScanIndex < nameSortAllAssets.length);
-
-  const loadNextNameSortPage = async () => {
-    const collected = await collectUntaggedAssets(nameSortAllAssets, nameSortScanIndex, NAME_SORT_LIMIT);
-    nameSortScanIndex = collected.nextIndex;
-    if (collected.untagged.length > 0) {
-      nameSortedAssets = collected.untagged;
     }
   };
 
@@ -1565,90 +1400,78 @@
         </section>
       {:else if showDurationSort}
         <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={durationSortViewport.width}>
-          {#if isLoadingDurationSort}
+          {#if durationSortView.isLoading}
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
             </div>
-          {:else if durationSortedAssets.length === 0}
+          {:else if durationSortView.matched.length === 0}
             <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
-              bind:assets={durationSortedAssets}
+              assets={durationSortView.pageAssets}
               assetInteraction={durationSortInteraction}
               viewport={durationSortViewport}
               videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
+              disableAssetSelect
             />
-            {#if hasMoreDurationSortedAssets}
-              <div class="flex justify-center pb-4">
-                <Button onclick={loadNextDurationSortPage}>{$t('next')}</Button>
-              </div>
-            {/if}
+            <AssetPageControls view={durationSortView} />
           {/if}
         </section>
       {:else if showFilenameDateSort}
         <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={filenameDateSortViewport.width}>
-          {#if isLoadingFilenameDateSort}
+          {#if filenameDateSortView.isLoading}
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
             </div>
-          {:else if filenameDateSortedAssets.length === 0}
+          {:else if filenameDateSortView.matched.length === 0}
             <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
-              bind:assets={filenameDateSortedAssets}
+              assets={filenameDateSortView.pageAssets}
               assetInteraction={filenameDateSortInteraction}
               viewport={filenameDateSortViewport}
               videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
+              disableAssetSelect
             />
-            {#if hasMoreFilenameDateSortedAssets}
-              <div class="flex justify-center pb-4">
-                <Button onclick={loadNextFilenameDateSortPage}>{$t('next')}</Button>
-              </div>
-            {/if}
+            <AssetPageControls view={filenameDateSortView} />
           {/if}
         </section>
       {:else if showNameSort}
         <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={nameSortViewport.width}>
-          {#if isLoadingNameSort}
+          {#if nameSortView.isLoading}
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
             </div>
-          {:else if nameSortedAssets.length === 0}
+          {:else if nameSortView.matched.length === 0}
             <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
-              bind:assets={nameSortedAssets}
+              assets={nameSortView.pageAssets}
               assetInteraction={nameSortInteraction}
               viewport={nameSortViewport}
               videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
+              disableAssetSelect
             />
-            {#if hasMoreNameSortedAssets}
-              <div class="flex justify-center pb-4">
-                <Button onclick={loadNextNameSortPage}>{$t('next')}</Button>
-              </div>
-            {/if}
+            <AssetPageControls view={nameSortView} />
           {/if}
         </section>
       {:else if showLikesSort}
         <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={likesSortViewport.width}>
-          {#if isLoadingLikesSort}
+          {#if likesSortView.isLoading}
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
             </div>
-          {:else if likesSortedAssets.length === 0}
+          {:else if likesSortView.matched.length === 0}
             <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
-              bind:assets={likesSortedAssets}
+              assets={likesSortView.pageAssets}
               assetInteraction={likesSortInteraction}
               viewport={likesSortViewport}
               videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
+              disableAssetSelect
             />
-            {#if hasMoreLikesSortedAssets}
-              <div class="flex justify-center pb-4">
-                <Button onclick={loadNextLikesSortPage}>{$t('next')}</Button>
-              </div>
-            {/if}
+            <AssetPageControls view={likesSortView} />
           {/if}
         </section>
       {:else if showDurationFilter}
@@ -1659,32 +1482,26 @@
               {durationFilterRange.max === Number.POSITIVE_INFINITY ? '∞' : `${durationFilterRange.max}s`}
             </p>
           {/if}
-          {#if isLoadingDurationFilter}
+          {#if durationFilterView.isLoading}
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
             </div>
-          {:else if durationFilterAssets.length === 0}
+          {:else if durationFilterView.matched.length === 0}
             <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
-              bind:assets={durationFilterAssets}
+              assets={durationFilterView.pageAssets}
               assetInteraction={durationFilterInteraction}
               viewport={durationFilterViewport}
               videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
+              disableAssetSelect
             />
-            {#if hasMoreDurationFilterAssets}
-              <div class="flex justify-center pb-4">
-                <Button onclick={loadNextDurationFilterPage}>{$t('next')}</Button>
-              </div>
-            {/if}
+            <AssetPageControls view={durationFilterView} />
           {/if}
         </section>
       {:else if showTagFilter}
         <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={tagFilterViewport.width}>
-          <div class="flex items-center justify-between pb-2">
-            <p class="text-sm text-gray-500 dark:text-gray-400">
-              {$t('items_count', { values: { count: tagFilterMatchedAssets.length } })}
-            </p>
+          <div class="flex justify-end pb-2">
             <button
               type="button"
               class="text-sm text-immich-primary dark:text-immich-dark-primary"
@@ -1694,24 +1511,21 @@
             </button>
           </div>
 
-          {#if isLoadingTagFilterResults}
+          {#if tagFilterView.isLoading}
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
             </div>
-          {:else if tagFilterPagedAssets.length === 0}
+          {:else if tagFilterView.matched.length === 0}
             <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
-              bind:assets={tagFilterPagedAssets}
+              assets={tagFilterView.pageAssets}
               assetInteraction={tagFilterInteraction}
               viewport={tagFilterViewport}
               videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
+              disableAssetSelect
             />
-            {#if hasMoreTagFilterAssets}
-              <div class="flex justify-center pb-4">
-                <Button onclick={loadNextTagFilterPage}>{$t('next')}</Button>
-              </div>
-            {/if}
+            <AssetPageControls view={tagFilterView} />
           {/if}
         </section>
       {/if}
