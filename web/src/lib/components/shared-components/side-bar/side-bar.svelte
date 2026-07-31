@@ -1,6 +1,7 @@
 <script lang="ts">
   import { featureFlags } from '$lib/stores/server-config.store';
   import {
+    mdiMovieEditOutline,
     mdiAccount,
     mdiAccountOutline,
     mdiAccountMultiple,
@@ -118,6 +119,8 @@
     <SideBarLink title={$t('ranges')} routeId="/(user)/ranges" icon={mdiCounter} flippedLogo />
 
     <SideBarLink title={$t('collrange')} routeId="/(user)/collrange" icon={mdiFilterVariant} flippedLogo />
+
+    <SideBarLink title={$t('editing')} routeId="/(user)/editing" icon={mdiMovieEditOutline} flippedLogo />
 
     {#if $preferences.tags.enabled && $preferences.tags.sidebarWeb}
       <SideBarLink title={$t('tags')} routeId="/(user)/tags" icon={mdiTagMultipleOutline} flippedLogo />

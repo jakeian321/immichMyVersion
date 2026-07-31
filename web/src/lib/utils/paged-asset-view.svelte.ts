@@ -39,6 +39,12 @@ export class PagedAssetView {
     this.isScanning = false;
   }
 
+  /** replaces the contents in one go, for callers whose filtering already happened server-side */
+  setAll(assets: AssetResponseDto[]) {
+    this.reset();
+    this.matched = assets;
+  }
+
   /** clears the view and shows the loading state while its candidates are being fetched */
   beginLoading() {
     this.reset();
