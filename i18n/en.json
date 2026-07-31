@@ -1352,6 +1352,7 @@
   "trash_no_results_message": "Trashed photos and videos will show up here.",
   "trashed_items_will_be_permanently_deleted_after": "Trashed items will be permanently deleted after {days, plural, one {# day} other {# days}}.",
   "trim_kept_summary": "Keeping {kept} of {total}",
+  "trim_partial_frames": "Only {count} frames could be read from this video; trimming is limited to those.",
   "trim_segments_count": "{count, plural, one {# segment} other {# segments}}",
   "type": "Type",
   "unarchive": "Unarchive",

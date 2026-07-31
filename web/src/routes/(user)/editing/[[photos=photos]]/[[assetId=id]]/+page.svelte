@@ -15,6 +15,7 @@
   import { assetViewingStore } from '$lib/stores/asset-viewing.store';
   import type { Viewport } from '$lib/stores/assets-store.svelte';
   import { handleError } from '$lib/utils/handle-error';
+  import { navigate } from '$lib/utils/navigation';
   import { ASSET_PAGE_SIZE, PagedAssetView } from '$lib/utils/paged-asset-view.svelte';
   import { AssetTypeEnum, searchAssets, type AssetResponseDto } from '@immich/sdk';
   import { t } from 'svelte-i18n';
@@ -45,6 +46,16 @@
   // the Edit button rides on top of the shared asset viewer rather than inside it, so
   // nothing about the viewer itself changes for the rest of the app
   let canEditCurrent = $derived($isViewerOpen && $viewingAsset?.type === AssetTypeEnum.Video && !editingAsset);
+
+  // iOS Safari only decodes one <video> at a time, so the viewer's player has to be torn
+  // down before the editor's capture element can seek - otherwise its seeks never
+  // complete and frame generation hangs
+  const openEditor = async () => {
+    const asset = $viewingAsset;
+    assetViewingStore.showAssetViewer(false);
+    await navigate({ targetRoute: 'current', assetId: null });
+    editingAsset = asset;
+  };
 
   let tagOptions = $derived(data.tags.map((tag) => ({ id: tag.id, value: tag.value })));
   let selectedTagNames = $derived(tagOptions.filter((tag) => selectedTagIds.includes(tag.id)).map((tag) => tag.value));
@@ -131,7 +142,7 @@
   <Portal target="body">
     <!-- sits above the viewer chrome, which tops out at z-[1002] -->
     <div class="fixed right-4 top-16 z-[1003]">
-      <Button size="sm" onclick={() => (editingAsset = $viewingAsset)}>{$t('edit')}</Button>
+      <Button size="sm" onclick={openEditor}>{$t('edit')}</Button>
     </div>
   </Portal>
 {/if}

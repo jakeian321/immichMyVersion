@@ -22,6 +22,7 @@
   const MAX_FRAMES = 240;
   const CAPTURE_MAX_WIDTH = 240;
   const JPEG_QUALITY = 0.6;
+  const SEEK_TIMEOUT_MS = 10_000;
 
   let videoElement: HTMLVideoElement | undefined = $state();
   let canvasElement: HTMLCanvasElement | undefined = $state();
@@ -32,6 +33,7 @@
   let isGenerating = $state(true);
   let progress = $state(0);
   let errorMessage = $state('');
+  let warningMessage = $state('');
   let isDestroyed = false;
 
   // every frame starts kept, so trimming is a matter of dropping what you don't want;
@@ -56,7 +58,10 @@
         return;
       }
 
+      let watchdog: ReturnType<typeof setTimeout>;
+
       const onSeeked = () => {
+        clearTimeout(watchdog);
         video.removeEventListener('seeked', onSeeked);
         // iOS Safari can fire `seeked` before the frame is painted, so give it an
         // extra couple of frames before drawing
@@ -71,6 +76,12 @@
         );
       };
 
+      // a seek that never completes would otherwise leave the spinner up forever
+      watchdog = setTimeout(() => {
+        video.removeEventListener('seeked', onSeeked);
+        reject(new Error(`Timed out seeking to ${time}s`));
+      }, SEEK_TIMEOUT_MS);
+
       video.addEventListener('seeked', onSeeked);
       video.currentTime = time;
     });
@@ -83,9 +94,27 @@
 
     try {
       video.src = getAssetPlaybackUrl({ id: asset.id, cacheKey: null });
+      video.load();
+      // wait for actual frame data, not just metadata - iOS will happily report
+      // duration while still having nothing decodable to draw
       await new Promise<void>((resolve, reject) => {
-        video.addEventListener('loadedmetadata', () => resolve(), { once: true });
-        video.addEventListener('error', () => reject(new Error('Failed to load video')), { once: true });
+        const timeout = setTimeout(() => reject(new Error('Timed out loading video')), SEEK_TIMEOUT_MS);
+        video.addEventListener(
+          'loadeddata',
+          () => {
+            clearTimeout(timeout);
+            resolve();
+          },
+          { once: true },
+        );
+        video.addEventListener(
+          'error',
+          () => {
+            clearTimeout(timeout);
+            reject(new Error('Failed to load video'));
+          },
+          { once: true },
+        );
       });
 
       // iOS Safari won't decode frames for drawImage until the video has played once
@@ -106,10 +135,21 @@
           return;
         }
         const time = Math.min(index * step, Math.max(duration - 0.05, 0));
-        const url = await captureFrame(time);
-        frames = [...frames, { time, url }];
-        keptIndexes.add(index);
+        try {
+          const url = await captureFrame(time);
+          frames = [...frames, { time, url }];
+          keptIndexes.add(index);
+        } catch {
+          // a stalled seek shouldn't throw away the frames already captured - stop here
+          // and let the strip be used as far as it got
+          warningMessage = $t('trim_partial_frames', { values: { count: frames.length } });
+          break;
+        }
         progress = Math.round(((index + 1) / count) * 100);
+      }
+
+      if (frames.length === 0) {
+        errorMessage = $t('errors.unable_to_load_asset');
       }
     } catch {
       errorMessage = $t('errors.unable_to_load_asset');
@@ -197,6 +237,9 @@
     {#if errorMessage}
       <p class="pt-8 text-center text-sm text-red-400">{errorMessage}</p>
     {:else}
+      {#if warningMessage}
+        <p class="pb-2 text-center text-xs text-amber-400">{warningMessage}</p>
+      {/if}
       {#if isGenerating}
         <div class="flex items-center justify-center gap-3 pb-3 text-sm text-gray-300">
           <LoadingSpinner />
@@ -227,6 +270,6 @@
     {/if}
   </div>
 
-  <video bind:this={videoElement} class="hidden" muted playsinline preload="metadata"></video>
+  <video bind:this={videoElement} class="hidden" muted playsinline preload="auto"></video>
   <canvas bind:this={canvasElement} class="hidden"></canvas>
 </div>
