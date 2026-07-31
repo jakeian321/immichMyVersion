@@ -101,13 +101,10 @@
 
       statusMessage = $t('trim_status_loading');
       video.src = getAssetPlaybackUrl({ id: asset.id, cacheKey: null });
-      video.load();
-      // wait for actual frame data, not just metadata - iOS will happily report
-      // duration while still having nothing decodable to draw
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('Timed out loading video')), SEEK_TIMEOUT_MS);
         video.addEventListener(
-          'loadeddata',
+          'loadedmetadata',
           () => {
             clearTimeout(timeout);
             resolve();
@@ -283,6 +280,13 @@
     {/if}
   </div>
 
-  <video bind:this={videoElement} class="hidden" muted playsinline preload="auto"></video>
+  <!-- kept rendered (1px, transparent) rather than hidden: iOS Safari will not decode
+       frames for drawImage from a display:none video, which is what `hidden` gives you -->
+  <video
+    bind:this={videoElement}
+    muted
+    playsinline
+    class="pointer-events-none fixed left-0 top-0 -z-50 h-px w-px opacity-0"
+  ></video>
   <canvas bind:this={canvasElement} class="hidden"></canvas>
 </div>
