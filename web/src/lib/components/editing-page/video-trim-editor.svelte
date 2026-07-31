@@ -23,6 +23,7 @@
   const CAPTURE_MAX_WIDTH = 240;
   const JPEG_QUALITY = 0.6;
   const SEEK_TIMEOUT_MS = 10_000;
+  const PLAY_PRIMING_TIMEOUT_MS = 2000;
 
   let videoElement: HTMLVideoElement | undefined = $state();
   let canvasElement: HTMLCanvasElement | undefined = $state();
@@ -34,6 +35,8 @@
   let progress = $state(0);
   let errorMessage = $state('');
   let warningMessage = $state('');
+  // shown next to the spinner so a stall on a phone says which phase it stalled in
+  let statusMessage = $state('');
   let isDestroyed = false;
 
   // every frame starts kept, so trimming is a matter of dropping what you don't want;
@@ -93,6 +96,10 @@
     }
 
     try {
+      // give the asset viewer's player a moment to actually release the decoder
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      statusMessage = $t('trim_status_loading');
       video.src = getAssetPlaybackUrl({ id: asset.id, cacheKey: null });
       video.load();
       // wait for actual frame data, not just metadata - iOS will happily report
@@ -117,9 +124,13 @@
         );
       });
 
-      // iOS Safari won't decode frames for drawImage until the video has played once
+      // iOS Safari won't decode frames for drawImage until the video has played once.
+      // Outside a user gesture iOS can leave this promise pending forever rather than
+      // rejecting, so it has to be raced - without the timeout the whole editor hangs
+      // here before any of the seek watchdogs apply.
+      statusMessage = $t('trim_status_priming');
       try {
-        await video.play();
+        await Promise.race([video.play(), new Promise((resolve) => setTimeout(resolve, PLAY_PRIMING_TIMEOUT_MS))]);
         video.pause();
       } catch {
         // autoplay may be blocked; seeking usually still works
@@ -135,6 +146,7 @@
           return;
         }
         const time = Math.min(index * step, Math.max(duration - 0.05, 0));
+        statusMessage = $t('trim_status_capturing', { values: { current: index + 1, total: count } });
         try {
           const url = await captureFrame(time);
           frames = [...frames, { time, url }];
@@ -155,6 +167,7 @@
       errorMessage = $t('errors.unable_to_load_asset');
     } finally {
       isGenerating = false;
+      statusMessage = '';
     }
   };
 
@@ -243,7 +256,7 @@
       {#if isGenerating}
         <div class="flex items-center justify-center gap-3 pb-3 text-sm text-gray-300">
           <LoadingSpinner />
-          <span>{progress}%</span>
+          <span>{statusMessage || `${progress}%`}</span>
         </div>
       {/if}
 
