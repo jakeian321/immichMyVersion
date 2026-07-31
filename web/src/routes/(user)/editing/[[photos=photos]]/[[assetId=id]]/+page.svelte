@@ -1,15 +1,22 @@
 <script lang="ts">
   import AssetPageControls from '$lib/components/album-page/asset-page-controls.svelte';
   import TagFilterModal from '$lib/components/album-page/tag-filter-modal.svelte';
+  import VideoTrimEditor from '$lib/components/editing-page/video-trim-editor.svelte';
   import Button from '$lib/components/elements/buttons/button.svelte';
   import UserPageLayout from '$lib/components/layouts/user-page-layout.svelte';
   import GalleryViewer from '$lib/components/shared-components/gallery-viewer/gallery-viewer.svelte';
   import LoadingSpinner from '$lib/components/shared-components/loading-spinner.svelte';
+  import Portal from '$lib/components/shared-components/portal/portal.svelte';
+  import {
+    notificationController,
+    NotificationType,
+  } from '$lib/components/shared-components/notification/notification';
   import { AssetInteraction } from '$lib/stores/asset-interaction.svelte';
+  import { assetViewingStore } from '$lib/stores/asset-viewing.store';
   import type { Viewport } from '$lib/stores/assets-store.svelte';
   import { handleError } from '$lib/utils/handle-error';
   import { ASSET_PAGE_SIZE, PagedAssetView } from '$lib/utils/paged-asset-view.svelte';
-  import { searchAssets, type AssetResponseDto } from '@immich/sdk';
+  import { AssetTypeEnum, searchAssets, type AssetResponseDto } from '@immich/sdk';
   import { t } from 'svelte-i18n';
   import type { PageData } from './$types';
 
@@ -31,6 +38,13 @@
   // height is set arbitrarily large so GalleryViewer renders the whole page of assets
   // instead of virtualizing against a scroll position it doesn't track
   const viewport: Viewport = $state({ width: 0, height: 100_000 });
+
+  const { isViewing: isViewerOpen, asset: viewingAsset } = assetViewingStore;
+
+  let editingAsset = $state<AssetResponseDto | null>(null);
+  // the Edit button rides on top of the shared asset viewer rather than inside it, so
+  // nothing about the viewer itself changes for the rest of the app
+  let canEditCurrent = $derived($isViewerOpen && $viewingAsset?.type === AssetTypeEnum.Video && !editingAsset);
 
   let tagOptions = $derived(data.tags.map((tag) => ({ id: tag.id, value: tag.value })));
   let selectedTagNames = $derived(tagOptions.filter((tag) => selectedTagIds.includes(tag.id)).map((tag) => tag.value));
@@ -111,4 +125,32 @@
     onApply={handleApply}
     onClose={() => (isPickerOpen = false)}
   />
+{/if}
+
+{#if canEditCurrent}
+  <Portal target="body">
+    <!-- sits above the viewer chrome, which tops out at z-[1002] -->
+    <div class="fixed right-4 top-16 z-[1003]">
+      <Button size="sm" onclick={() => (editingAsset = $viewingAsset)}>{$t('edit')}</Button>
+    </div>
+  </Portal>
+{/if}
+
+{#if editingAsset}
+  <Portal target="body">
+    <VideoTrimEditor
+      asset={editingAsset}
+      onCancel={() => (editingAsset = null)}
+      onSave={(segments) => {
+        // step 3 turns this into a stored recipe; for now show what was chosen so the
+        // selection can be checked on a phone, where there is no console
+        notificationController.show({
+          message: segments.map(({ start, end }) => `${start.toFixed(1)}-${end.toFixed(1)}s`).join(', '),
+          type: NotificationType.Info,
+          timeout: 8000,
+        });
+        editingAsset = null;
+      }}
+    />
+  </Portal>
 {/if}
