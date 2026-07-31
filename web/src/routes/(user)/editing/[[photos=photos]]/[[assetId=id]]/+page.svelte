@@ -16,6 +16,7 @@
   import type { Viewport } from '$lib/stores/assets-store.svelte';
   import { handleError } from '$lib/utils/handle-error';
   import { navigate } from '$lib/utils/navigation';
+  import { queueEditRecipe, type EditSegment } from '$lib/utils/edit-recipe';
   import { ASSET_PAGE_SIZE, PagedAssetView } from '$lib/utils/paged-asset-view.svelte';
   import { AssetTypeEnum, searchAssets, type AssetResponseDto } from '@immich/sdk';
   import { t } from 'svelte-i18n';
@@ -55,6 +56,30 @@
     assetViewingStore.showAssetViewer(false);
     await navigate({ targetRoute: 'current', assetId: null });
     editingAsset = asset;
+  };
+
+  const handleQueueEdit = async (segments: EditSegment[]) => {
+    const asset = editingAsset;
+    if (!asset) {
+      return;
+    }
+
+    try {
+      await queueEditRecipe({
+        assetId: asset.id,
+        fileName: asset.originalFileName,
+        segments,
+        crop: null,
+        queuedAt: new Date().toISOString(),
+      });
+      notificationController.show({
+        message: $t('edit_queued', { values: { count: segments.length } }),
+        type: NotificationType.Info,
+      });
+      editingAsset = null;
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_save_album'));
+    }
   };
 
   let tagOptions = $derived(data.tags.map((tag) => ({ id: tag.id, value: tag.value })));
@@ -152,16 +177,7 @@
     <VideoTrimEditor
       asset={editingAsset}
       onCancel={() => (editingAsset = null)}
-      onSave={(segments) => {
-        // step 3 turns this into a stored recipe; for now show what was chosen so the
-        // selection can be checked on a phone, where there is no console
-        notificationController.show({
-          message: segments.map(({ start, end }) => `${start.toFixed(1)}-${end.toFixed(1)}s`).join(', '),
-          type: NotificationType.Info,
-          timeout: 8000,
-        });
-        editingAsset = null;
-      }}
+      onSave={(segments) => void handleQueueEdit(segments)}
     />
   </Portal>
 {/if}
