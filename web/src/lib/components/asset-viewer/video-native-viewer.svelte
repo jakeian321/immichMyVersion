@@ -183,54 +183,55 @@
   const TAG_DISPLAY_THRESHOLD = 0.9;
 
   const presetTags = [
-    { id: 'preset-low', value: 'low' },
-    { id: 'preset-semitop', value: 'semitop' },
-    { id: 'preset-top', value: 'top' },
-    { id: 'preset-lowTOK', value: 'lowTOK' },
-    { id: 'preset-semiTOK', value: 'semiTOK' },
-    { id: 'preset-topTOK', value: 'topTOK' },
-    { id: 'preset-twerk', value: 'twerk' },
-    { id: 'preset-face', value: 'face' },
-    { id: 'preset-wiggle', value: 'wiggle' },
-    { id: 'preset-pose', value: 'pose' },
-    { id: 'preset-recoil', value: 'recoil' },
-    { id: 'preset-pose2', value: 'pose2' },
-    { id: 'preset-side', value: 'side' },
-    { id: 'preset-lay', value: 'lay' },
-    { id: 'preset-body', value: 'body' },
-    { id: 'preset-spin', value: 'spin' },
-    { id: 'preset-ass', value: 'ass' },
-    { id: 'preset-walk', value: 'walk' },
-    { id: 'preset-tongue', value: 'tongue' },
-    { id: 'preset-ahegao', value: 'ahegao' },
-    { id: 'preset-tit', value: 'tit' },
-    { id: 'preset-bikini', value: 'bikini' },
-    { id: 'preset-milf', value: 'milf' },
-    { id: 'preset-editing', value: 'editing' },
+    { id: 'preset-low', value: 'Low' },
+    { id: 'preset-semitop', value: 'Semitop' },
+    { id: 'preset-top', value: 'Top' },
+    { id: 'preset-lowTOK', value: 'Lowtok' },
+    { id: 'preset-semiTOK', value: 'Semitok' },
+    { id: 'preset-topTOK', value: 'Toptok' },
+    { id: 'preset-twerk', value: 'Twerk' },
+    { id: 'preset-face', value: 'Face' },
+    { id: 'preset-wiggle', value: 'Wiggle' },
+    { id: 'preset-pose', value: 'Pose' },
+    { id: 'preset-recoil', value: 'Recoil' },
+    { id: 'preset-pose2', value: 'Pose2' },
+    { id: 'preset-side', value: 'Side' },
+    { id: 'preset-lay', value: 'Lay' },
+    { id: 'preset-body', value: 'Body' },
+    { id: 'preset-spin', value: 'Spin' },
+    { id: 'preset-ass', value: 'Ass' },
+    { id: 'preset-walk', value: 'Walk' },
+    { id: 'preset-tongue', value: 'Tongue' },
+    { id: 'preset-ahegao', value: 'Ahegao' },
+    { id: 'preset-tit', value: 'Tit' },
+    { id: 'preset-bikini', value: 'Bikini' },
+    { id: 'preset-milf', value: 'Milf' },
+    { id: 'preset-editing', value: 'Editing' },
   ];
 
   // one-tap shortcuts that select several preset tags at once; each is shown
   // inline next to its anchorTag in the preset tag list
   const comboTags = [
-    { id: 'combo-tpr', label: 'TPR', anchorTag: 'recoil', tagValues: ['top', 'pose', 'recoil'] },
-    { id: 'combo-tpt', label: 'TPT', anchorTag: 'twerk', tagValues: ['top', 'pose', 'twerk'] },
-    { id: 'combo-tpw', label: 'TPW', anchorTag: 'wiggle', tagValues: ['top', 'pose', 'wiggle'] },
-    { id: 'combo-tp', label: 'TP', anchorTag: 'pose', tagValues: ['top', 'pose'] },
-    { id: 'combo-tps', label: 'TPS', anchorTag: 'spin', tagValues: ['top', 'pose', 'spin'] },
-    { id: 'combo-tpl', label: 'TPL', anchorTag: 'lay', tagValues: ['top', 'pose', 'lay'] },
-    { id: 'combo-tpa', label: 'TPA', anchorTag: 'ahegao', tagValues: ['top', 'pose', 'ahegao'] },
-    { id: 'combo-tpto', label: 'TPTo', anchorTag: 'tongue', tagValues: ['top', 'pose', 'tongue'] },
-    { id: 'combo-tpb', label: 'TPB', anchorTag: 'bikini', tagValues: ['top', 'pose', 'bikini'] },
-    { id: 'combo-tpf', label: 'TPF', anchorTag: 'face', tagValues: ['top', 'pose', 'face'] },
-    { id: 'combo-tpsi', label: 'TPSi', anchorTag: 'side', tagValues: ['top', 'pose', 'side'] },
-    { id: 'combo-tpti', label: 'TPTi', anchorTag: 'tit', tagValues: ['top', 'pose', 'tit'] },
-    { id: 'combo-tpm', label: 'TPM', anchorTag: 'milf', tagValues: ['top', 'pose', 'milf'] },
-    { id: 'combo-tppo', label: 'TPPo', anchorTag: 'pose2', tagValues: ['top', 'pose', 'pose2'] },
-    { id: 'combo-tpbo', label: 'TPBo', anchorTag: 'body', tagValues: ['top', 'pose', 'body'] },
-    { id: 'combo-tpwa', label: 'TPWa', anchorTag: 'walk', tagValues: ['top', 'pose', 'walk'] },
+    { id: 'combo-tpr', label: 'TPR', anchorTag: 'Recoil', tagValues: ['Top', 'Pose', 'Recoil'] },
+    { id: 'combo-tpt', label: 'TPT', anchorTag: 'Twerk', tagValues: ['Top', 'Pose', 'Twerk'] },
+    { id: 'combo-tpw', label: 'TPW', anchorTag: 'Wiggle', tagValues: ['Top', 'Pose', 'Wiggle'] },
+    { id: 'combo-tp', label: 'TP', anchorTag: 'Pose', tagValues: ['Top', 'Pose'] },
+    { id: 'combo-tps', label: 'TPS', anchorTag: 'Spin', tagValues: ['Top', 'Pose', 'Spin'] },
+    { id: 'combo-tpl', label: 'TPL', anchorTag: 'Lay', tagValues: ['Top', 'Pose', 'Lay'] },
+    { id: 'combo-tpa', label: 'TPA', anchorTag: 'Ahegao', tagValues: ['Top', 'Pose', 'Ahegao'] },
+    { id: 'combo-tpto', label: 'TPTo', anchorTag: 'Tongue', tagValues: ['Top', 'Pose', 'Tongue'] },
+    { id: 'combo-tpb', label: 'TPB', anchorTag: 'Bikini', tagValues: ['Top', 'Pose', 'Bikini'] },
+    { id: 'combo-tpf', label: 'TPF', anchorTag: 'Face', tagValues: ['Top', 'Pose', 'Face'] },
+    { id: 'combo-tpsi', label: 'TPSi', anchorTag: 'Side', tagValues: ['Top', 'Pose', 'Side'] },
+    { id: 'combo-tpti', label: 'TPTi', anchorTag: 'Tit', tagValues: ['Top', 'Pose', 'Tit'] },
+    { id: 'combo-tpm', label: 'TPM', anchorTag: 'Milf', tagValues: ['Top', 'Pose', 'Milf'] },
+    { id: 'combo-tppo', label: 'TPPo', anchorTag: 'Pose2', tagValues: ['Top', 'Pose', 'Pose2'] },
+    { id: 'combo-tpbo', label: 'TPBo', anchorTag: 'Body', tagValues: ['Top', 'Pose', 'Body'] },
+    { id: 'combo-tpwa', label: 'TPWa', anchorTag: 'Walk', tagValues: ['Top', 'Pose', 'Walk'] },
   ];
 
-  const getComboTagForAnchor = (tagValue: string) => comboTags.find((combo) => combo.anchorTag === tagValue);
+  const getComboTagForAnchor = (tagValue: string) =>
+    comboTags.find((combo) => combo.anchorTag.toLowerCase() === tagValue.toLowerCase());
 
   let availableTagsMap = $state<Record<string, string>>({});
 
@@ -742,7 +743,7 @@
 
       if (asset?.tags) {
         selectedPresetTags = asset.tags
-          .filter((tag) => presetTags.some((preset) => preset.value === tag.value))
+          .filter((tag) => presetTags.some((preset) => preset.value.toLowerCase() === tag.value.toLowerCase()))
           .map((tag) => tag.value);
       }
     } catch (error) {
@@ -764,7 +765,7 @@
 
         if (asset?.tags) {
           selectedPresetTags = asset.tags
-            .filter((tag) => presetTags.some((preset) => preset.value === tag.value))
+            .filter((tag) => presetTags.some((preset) => preset.value.toLowerCase() === tag.value.toLowerCase()))
             .map((tag) => tag.value);
         }
       }
@@ -855,7 +856,7 @@
     }
     e.stopPropagation();
 
-    const tagValue = 'low';
+    const tagValue = 'Low';
 
     // no-op if already tagged
     if (asset.tags?.some((tag) => tag.value.toLowerCase() === tagValue)) {
@@ -897,7 +898,7 @@
   };
 
   const getVisiblePresetTags = () => {
-    const tokTags = ['lowTOK', 'semiTOK', 'topTOK'];
+    const tokTags = ['Lowtok', 'Semitok', 'Toptok'];
     return presetTags.filter((tag) => !tokTags.includes(tag.value));
   };
 
@@ -981,9 +982,9 @@
   };
 
   const togglePresetTagSelection = (tagValue: string) => {
-    const index = tempPresetSelection.indexOf(tagValue);
+    const index = tempPresetSelection.findIndex((t) => t.toLowerCase() === tagValue.toLowerCase());
     if (index > -1) {
-      tempPresetSelection = tempPresetSelection.filter((t) => t !== tagValue);
+      tempPresetSelection = tempPresetSelection.filter((t) => t.toLowerCase() !== tagValue.toLowerCase());
     } else {
       tempPresetSelection = [...tempPresetSelection, tagValue];
     }
@@ -1451,7 +1452,7 @@
                 <button
                   type="button"
                   class={`px-3 py-2 rounded-lg text-white transition-all ${
-                    tempPresetSelection.includes(presetTag.value)
+                    tempPresetSelection.some((t) => t.toLowerCase() === presetTag.value.toLowerCase())
                       ? 'bg-immich-primary'
                       : 'bg-gray-700 hover:bg-gray-600'
                   }`}
