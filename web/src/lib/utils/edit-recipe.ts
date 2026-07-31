@@ -64,9 +64,14 @@ export const isEditQueueAlbum = (album: AlbumResponseDto): boolean => parseEditQ
 export const getEditRecipes = (album: AlbumResponseDto): EditRecipe[] =>
   parseEditQueue(album.description)?.recipes ?? [];
 
-export const findEditQueueAlbum = async (): Promise<AlbumResponseDto | undefined> => {
+const findEditQueueAlbums = async (): Promise<AlbumResponseDto[]> => {
   const albums = await sdk.getAllAlbums({});
-  return albums.find((album) => isEditQueueAlbum(album));
+  return albums.filter((album) => isEditQueueAlbum(album)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+};
+
+export const findEditQueueAlbum = async (): Promise<AlbumResponseDto | undefined> => {
+  const albums = await findEditQueueAlbums();
+  return albums[0];
 };
 
 /**
@@ -80,16 +85,25 @@ export const findEditQueueAlbum = async (): Promise<AlbumResponseDto | undefined
  * Re-queueing the same asset replaces its previous recipe.
  */
 export const queueEditRecipe = async (recipe: EditRecipe): Promise<void> => {
-  const album = await findEditQueueAlbum();
-  const existing = album ? getEditRecipes(album) : [];
+  const albums = await findEditQueueAlbums();
+  const [primary, ...duplicates] = albums;
+
+  // two saves in quick succession can each find no queue album and create one, so fold
+  // any strays back into the oldest rather than leaving recipes stranded in a second
+  // album the processor may never look at
+  const existing = albums.flatMap((album) => getEditRecipes(album));
   const recipes = [...existing.filter((entry) => entry.assetId !== recipe.assetId), recipe];
 
-  if (album) {
-    await sdk.updateAlbumInfo({ id: album.id, updateAlbumDto: { description: stringifyEditQueue(recipes) } });
+  if (!primary) {
+    await sdk.createAlbum({
+      createAlbumDto: { albumName: EDIT_QUEUE_ALBUM_NAME, description: stringifyEditQueue(recipes) },
+    });
     return;
   }
 
-  await sdk.createAlbum({
-    createAlbumDto: { albumName: EDIT_QUEUE_ALBUM_NAME, description: stringifyEditQueue(recipes) },
-  });
+  await sdk.updateAlbumInfo({ id: primary.id, updateAlbumDto: { description: stringifyEditQueue(recipes) } });
+
+  for (const duplicate of duplicates) {
+    await sdk.updateAlbumInfo({ id: duplicate.id, updateAlbumDto: { description: stringifyEditQueue([]) } });
+  }
 };

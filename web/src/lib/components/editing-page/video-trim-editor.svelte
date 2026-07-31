@@ -193,11 +193,14 @@
     const sorted = [...keptIndexes].sort((a, b) => a - b);
     const ranges: { start: number; end: number }[] = [];
     for (const index of sorted) {
-      const start = frames[index]?.time ?? index * step;
-      const end = Math.min(start + step, duration);
+      // taken from the frame grid rather than the captured frame's timestamp: the last
+      // frame's seek time is clamped just inside the duration, which would otherwise
+      // produce a sliver overlapping the previous segment
+      const start = index * step;
+      const end = Math.min((index + 1) * step, duration);
       const last = ranges.at(-1);
-      if (last && Math.abs(last.end - start) < 0.001) {
-        last.end = end;
+      if (last && start <= last.end + 0.001) {
+        last.end = Math.max(last.end, end);
       } else {
         ranges.push({ start, end });
       }
