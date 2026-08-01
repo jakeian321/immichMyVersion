@@ -1,7 +1,9 @@
 <script lang="ts">
   import Button from '$lib/components/elements/buttons/button.svelte';
   import LoadingSpinner from '$lib/components/shared-components/loading-spinner.svelte';
+  import CropSelector from '$lib/components/editing-page/crop-selector.svelte';
   import { getAssetPlaybackUrl } from '$lib/utils';
+  import type { EditCrop } from '$lib/utils/edit-recipe';
   import { type AssetResponseDto } from '@immich/sdk';
   import { t } from 'svelte-i18n';
   import { onDestroy } from 'svelte';
@@ -10,7 +12,7 @@
   interface Props {
     asset: AssetResponseDto;
     onCancel: () => void;
-    onSave: (segments: { start: number; end: number }[]) => void;
+    onSave: (segments: { start: number; end: number }[], crop: EditCrop | null) => void;
   }
 
   let { asset, onCancel, onSave }: Props = $props();
@@ -38,6 +40,11 @@
   // shown next to the spinner so a stall on a phone says which phase it stalled in
   let statusMessage = $state('');
   let isDestroyed = false;
+
+  // crop comes first, as an optional step: skipping it leaves the frame untouched
+  let stage = $state<'crop' | 'trim'>('crop');
+  let crop = $state<EditCrop>({ x: 0, y: 0, width: 1, height: 1 });
+  let useCrop = $state(false);
 
   // every frame starts kept, so trimming is a matter of dropping what you don't want;
   // the select-none button covers the opposite way of working
@@ -215,36 +222,54 @@
   <div class="flex items-center justify-between gap-2 border-b border-gray-800 p-3">
     <Button size="sm" color="gray" onclick={onCancel}>{$t('cancel')}</Button>
     <p class="truncate text-sm">{asset.originalFileName}</p>
-    <Button size="sm" disabled={segments.length === 0 || isGenerating} onclick={() => onSave(segments)}>
-      {$t('save')}
-    </Button>
+    {#if stage === 'crop'}
+      <div class="flex gap-2">
+        <Button size="sm" color="gray" disabled={isGenerating} onclick={() => ((useCrop = false), (stage = 'trim'))}>
+          {$t('skip_crop')}
+        </Button>
+        <Button size="sm" disabled={isGenerating} onclick={() => ((useCrop = true), (stage = 'trim'))}>
+          {$t('next')}
+        </Button>
+      </div>
+    {:else}
+      <Button
+        size="sm"
+        disabled={segments.length === 0 || isGenerating}
+        onclick={() => onSave(segments, useCrop ? crop : null)}
+      >
+        {$t('save')}
+      </Button>
+    {/if}
   </div>
 
-  <div class="flex flex-wrap items-center gap-3 px-3 py-2 text-xs text-gray-300">
-    <span>{$t('trim_kept_summary', { values: { kept: formatTime(keptDuration), total: formatTime(duration) } })}</span>
-    <span>·</span>
-    <span>{$t('trim_segments_count', { values: { count: segments.length } })}</span>
-    <button
-      type="button"
-      class="rounded-lg bg-gray-800 px-2 py-1 [@media(hover:hover)]:hover:bg-gray-700"
-      style="touch-action: manipulation"
-      onclick={() => {
-        for (let i = 0; i < frames.length; i++) {
-          keptIndexes.add(i);
-        }
-      }}
-    >
-      {$t('select_all')}
-    </button>
-    <button
-      type="button"
-      class="rounded-lg bg-gray-800 px-2 py-1 [@media(hover:hover)]:hover:bg-gray-700"
-      style="touch-action: manipulation"
-      onclick={() => keptIndexes.clear()}
-    >
-      {$t('unselect_all')}
-    </button>
-  </div>
+  {#if stage === 'trim'}
+    <div class="flex flex-wrap items-center gap-3 px-3 py-2 text-xs text-gray-300">
+      <span>{$t('trim_kept_summary', { values: { kept: formatTime(keptDuration), total: formatTime(duration) } })}</span
+      >
+      <span>·</span>
+      <span>{$t('trim_segments_count', { values: { count: segments.length } })}</span>
+      <button
+        type="button"
+        class="rounded-lg bg-gray-800 px-2 py-1 [@media(hover:hover)]:hover:bg-gray-700"
+        style="touch-action: manipulation"
+        onclick={() => {
+          for (let i = 0; i < frames.length; i++) {
+            keptIndexes.add(i);
+          }
+        }}
+      >
+        {$t('select_all')}
+      </button>
+      <button
+        type="button"
+        class="rounded-lg bg-gray-800 px-2 py-1 [@media(hover:hover)]:hover:bg-gray-700"
+        style="touch-action: manipulation"
+        onclick={() => keptIndexes.clear()}
+      >
+        {$t('unselect_all')}
+      </button>
+    </div>
+  {/if}
 
   <div class="immich-scrollbar flex-1 overflow-y-auto p-3">
     {#if errorMessage}
@@ -260,26 +285,33 @@
         </div>
       {/if}
 
-      <div class="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-8">
-        {#each frames as frame, index (frame.time)}
-          {@const kept = keptIndexes.has(index)}
-          <button
-            type="button"
-            class={[
-              'relative overflow-hidden rounded-lg border-2 transition-opacity',
-              kept ? 'border-immich-primary' : 'border-transparent opacity-40',
-            ]}
-            style="touch-action: manipulation"
-            onclick={() => toggle(index)}
-          >
-            <img src={frame.url} alt={formatTime(frame.time)} class="w-full" />
-            <span class="absolute left-1 top-1 rounded bg-black/70 px-1 text-[10px]">{index + 1}</span>
-            <span class="absolute bottom-1 right-1 rounded bg-black/70 px-1 text-[10px]">
-              {formatTime(frame.time)}
-            </span>
-          </button>
-        {/each}
-      </div>
+      {#if stage === 'crop'}
+        {#if frames.length > 0}
+          <p class="pb-3 text-center text-xs text-gray-400">{$t('crop_hint')}</p>
+          <CropSelector src={frames[0].url} {crop} onChange={(next) => (crop = next)} />
+        {/if}
+      {:else}
+        <div class="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-8">
+          {#each frames as frame, index (frame.time)}
+            {@const kept = keptIndexes.has(index)}
+            <button
+              type="button"
+              class={[
+                'relative overflow-hidden rounded-lg border-2 transition-opacity',
+                kept ? 'border-immich-primary' : 'border-transparent opacity-40',
+              ]}
+              style="touch-action: manipulation"
+              onclick={() => toggle(index)}
+            >
+              <img src={frame.url} alt={formatTime(frame.time)} class="w-full" />
+              <span class="absolute left-1 top-1 rounded bg-black/70 px-1 text-[10px]">{index + 1}</span>
+              <span class="absolute bottom-1 right-1 rounded bg-black/70 px-1 text-[10px]">
+                {formatTime(frame.time)}
+              </span>
+            </button>
+          {/each}
+        </div>
+      {/if}
     {/if}
   </div>
 

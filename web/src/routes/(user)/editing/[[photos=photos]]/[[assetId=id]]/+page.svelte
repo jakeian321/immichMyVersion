@@ -16,7 +16,7 @@
   import type { Viewport } from '$lib/stores/assets-store.svelte';
   import { handleError } from '$lib/utils/handle-error';
   import { navigate } from '$lib/utils/navigation';
-  import { queueEditRecipe, type EditSegment } from '$lib/utils/edit-recipe';
+  import { queueEditRecipe, type EditCrop, type EditSegment } from '$lib/utils/edit-recipe';
   import { ASSET_PAGE_SIZE, PagedAssetView } from '$lib/utils/paged-asset-view.svelte';
   import { AssetTypeEnum, searchAssets, type AssetResponseDto } from '@immich/sdk';
   import { t } from 'svelte-i18n';
@@ -58,7 +58,7 @@
     editingAsset = asset;
   };
 
-  const handleQueueEdit = async (segments: EditSegment[]) => {
+  const handleQueueEdit = async (segments: EditSegment[], crop: EditCrop | null) => {
     const asset = editingAsset;
     if (!asset) {
       return;
@@ -69,7 +69,7 @@
         assetId: asset.id,
         fileName: asset.originalFileName,
         segments,
-        crop: null,
+        crop,
         queuedAt: new Date().toISOString(),
       });
       notificationController.show({
@@ -177,7 +177,7 @@
     <VideoTrimEditor
       asset={editingAsset}
       onCancel={() => (editingAsset = null)}
-      onSave={(segments) => void handleQueueEdit(segments)}
+      onSave={(segments, crop) => void handleQueueEdit(segments, crop)}
     />
   </Portal>
 {/if}
