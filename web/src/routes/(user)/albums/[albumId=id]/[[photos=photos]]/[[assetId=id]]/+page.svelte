@@ -3,7 +3,7 @@
   import { scrollMemoryClearer } from '$lib/actions/scroll-memory';
   import AddToCollectionsModal from '$lib/components/album-page/add-to-collections-modal.svelte';
   import AssetPageControls from '$lib/components/album-page/asset-page-controls.svelte';
-  import TagFilterModal from '$lib/components/album-page/tag-filter-modal.svelte';
+  import TagFilterModal, { type TagFilterMode } from '$lib/components/album-page/tag-filter-modal.svelte';
   import AlbumDescription from '$lib/components/album-page/album-description.svelte';
   import AlbumOptions from '$lib/components/album-page/album-options.svelte';
   import AlbumSummary from '$lib/components/album-page/album-summary.svelte';
@@ -240,6 +240,8 @@
   let isLoadingTagFilterPickerOptions = $state(false);
   let tagFilterPickerOptions: { id: string; value: string }[] = $state([]);
   let selectedTagFilterIds: string[] = $state([]);
+  let tagFilterMode = $state<TagFilterMode>('all');
+  let tagFilterCount = $state<number | null>(null);
   const tagFilterView = new PagedAssetView();
   // height is set arbitrarily large so GalleryViewer renders every asset instead of
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
@@ -738,11 +740,13 @@
     isTagFilterPickerOpen = true;
   };
 
-  const handleTagFilterApply = async (tagIds: string[]) => {
+  const handleTagFilterApply = async (tagIds: string[], mode: TagFilterMode, tagCount: number | null) => {
     isTagFilterPickerOpen = false;
     selectedTagFilterIds = tagIds;
+    tagFilterMode = mode;
+    tagFilterCount = tagCount;
 
-    if (tagIds.length === 0) {
+    if (tagIds.length === 0 && tagCount === null) {
       showTagFilter = false;
       return;
     }
@@ -760,12 +764,20 @@
 
     try {
       const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
-      // AND logic: an asset only matches when it carries every selected tag
-      const hasEverySelectedTag = async (asset: AssetResponseDto) => {
+      const matches = async (asset: AssetResponseDto) => {
         const tags = await getAssetTags(asset.id);
-        return tagIds.every((tagId) => tags.some((tag) => tag.id === tagId));
+        // 'all' needs every selected tag present, 'any' just one of them
+        const hasTags =
+          tagIds.length === 0 ||
+          (mode === 'all'
+            ? tagIds.every((tagId) => tags.some((tag) => tag.id === tagId))
+            : tagIds.some((tagId) => tags.some((tag) => tag.id === tagId)));
+        // the count is the asset's total number of tags, so "2" with semitop selected
+        // means semitop plus exactly one other tag
+        const hasCount = tagCount === null || tags.length === tagCount;
+        return hasTags && hasCount;
       };
-      tagFilterView.scan(fullAlbum.assets, hasEverySelectedTag, CONCURRENT_TAG_CHECKS);
+      tagFilterView.scan(fullAlbum.assets, matches, CONCURRENT_TAG_CHECKS);
     } catch (error) {
       handleError(error, $t('errors.unable_to_load_album'));
       tagFilterView.reset();
@@ -1751,6 +1763,9 @@
   <TagFilterModal
     tagOptions={tagFilterPickerOptions}
     initialSelectedIds={selectedTagFilterIds}
+    showAdvanced
+    initialMode={tagFilterMode}
+    initialTagCount={tagFilterCount}
     onApply={handleTagFilterApply}
     onClose={() => (isTagFilterPickerOpen = false)}
   />
