@@ -93,6 +93,7 @@
     mdiSortAlphabeticalDescending,
     mdiSortNumericAscending,
     mdiSortNumericDescending,
+    mdiFileAlertOutline,
     mdiSortCalendarAscending,
     mdiSortCalendarDescending,
     mdiNumeric,
@@ -234,6 +235,12 @@
   // (e.g. after changing the tag selection) never re-fetches it
   const assetTagsCache = new Map<string, { id: string; value: string }[]>();
 
+  let showFilenameIssues = $state(false);
+  const filenameIssuesView = new PagedAssetView();
+  // height is set arbitrarily large so GalleryViewer renders every asset instead of
+  // virtualizing based on window scroll position, which doesn't track this view's scroll container
+  const filenameIssuesViewport: Viewport = $state({ width: 0, height: 100_000 });
+
   let showTagFilter = $state(false);
   let isTagFilterPickerOpen = $state(false);
   // brief: just fetching the full tag list, not scanning the album
@@ -263,6 +270,7 @@
   const nameSortInteraction = new AssetInteraction();
   const durationFilterInteraction = new AssetInteraction();
   const tagFilterInteraction = new AssetInteraction();
+  const filenameIssuesInteraction = new AssetInteraction();
 
   afterNavigate(({ from }) => {
     let url: string | undefined = from?.url?.pathname;
@@ -498,6 +506,7 @@
     showLikesSort = false;
     showDurationFilter = false;
     showTagFilter = false;
+    showFilenameIssues = false;
 
     showDurationSort = true;
     durationSortAllAssets = [];
@@ -559,6 +568,7 @@
     showLikesSort = false;
     showDurationFilter = false;
     showTagFilter = false;
+    showFilenameIssues = false;
 
     showFilenameDateSort = true;
     filenameDateSortAllAssets = [];
@@ -610,6 +620,7 @@
     showNameSort = false;
     showDurationFilter = false;
     showTagFilter = false;
+    showFilenameIssues = false;
 
     showLikesSort = true;
     likesSortAllAssets = [];
@@ -623,6 +634,40 @@
       handleError(error, $t('errors.unable_to_load_album'));
       likesSortView.reset();
       showLikesSort = false;
+    }
+  };
+
+  // the naming convention carries both a date and a like count, e.g.
+  // "... - 20260620 - ... - 0 likes - ...". Anything missing either part is what this
+  // view surfaces, so it can be renamed. Filenames are in the album payload, so unlike
+  // the other views this needs no per-asset request at all.
+  const hasNamingConvention = (filename: string) =>
+    getFilenameDate(filename) !== null && getFilenameLikes(filename) !== null;
+
+  const toggleFilenameIssues = async () => {
+    if (showFilenameIssues) {
+      showFilenameIssues = false;
+      cancelMultiselect(filenameIssuesInteraction);
+      return;
+    }
+
+    showDurationSort = false;
+    showFilenameDateSort = false;
+    showNameSort = false;
+    showLikesSort = false;
+    showDurationFilter = false;
+    showTagFilter = false;
+
+    showFilenameIssues = true;
+    filenameIssuesView.beginLoading();
+
+    try {
+      const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
+      filenameIssuesView.setAll(fullAlbum.assets.filter((asset) => !hasNamingConvention(asset.originalFileName)));
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_load_album'));
+      filenameIssuesView.reset();
+      showFilenameIssues = false;
     }
   };
 
@@ -680,6 +725,7 @@
     showNameSort = false;
     showLikesSort = false;
     showTagFilter = false;
+    showFilenameIssues = false;
 
     showDurationFilter = true;
     durationFilterView.beginLoading();
@@ -721,6 +767,7 @@
   const openTagFilter = async () => {
     if (showTagFilter) {
       showTagFilter = false;
+      showFilenameIssues = false;
       cancelMultiselect(tagFilterInteraction);
       return;
     }
@@ -748,6 +795,7 @@
 
     if (tagIds.length === 0 && tagCount === null) {
       showTagFilter = false;
+      showFilenameIssues = false;
       return;
     }
 
@@ -782,6 +830,7 @@
       handleError(error, $t('errors.unable_to_load_album'));
       tagFilterView.reset();
       showTagFilter = false;
+      showFilenameIssues = false;
     }
   };
 
@@ -819,6 +868,7 @@
     showLikesSort = false;
     showDurationFilter = false;
     showTagFilter = false;
+    showFilenameIssues = false;
 
     showNameSort = true;
     nameSortAllAssets = [];
@@ -1218,6 +1268,14 @@
                     size="20"
                     padding="2"
                   />
+                  <CircleIconButton
+                    title={showFilenameIssues ? $t('close') : $t('filter_unnamed')}
+                    onclick={toggleFilenameIssues}
+                    icon={showFilenameIssues ? mdiClose : mdiFileAlertOutline}
+                    color={showFilenameIssues ? 'primary' : undefined}
+                    size="20"
+                    padding="2"
+                  />
                 </div>
               {/if}
 
@@ -1511,6 +1569,27 @@
             <AssetPageControls view={durationFilterView} />
           {/if}
         </section>
+      {:else if showFilenameIssues}
+        <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={filenameIssuesViewport.width}>
+          <p class="pb-2 text-center text-sm text-gray-500 dark:text-gray-400">{$t('filter_unnamed_hint')}</p>
+          {#if filenameIssuesView.isLoading}
+            <div class="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+          {:else if filenameIssuesView.matched.length === 0}
+            <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
+          {:else}
+            <GalleryViewer
+              assets={filenameIssuesView.pageAssets}
+              assetInteraction={filenameIssuesInteraction}
+              viewport={filenameIssuesViewport}
+              videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
+              disableAssetSelect
+              showAssetName
+            />
+            <AssetPageControls view={filenameIssuesView} />
+          {/if}
+        </section>
       {:else if showTagFilter}
         <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={tagFilterViewport.width}>
           <div class="flex justify-end pb-2">
@@ -1550,7 +1629,8 @@
           showNameSort ||
           showLikesSort ||
           showDurationFilter ||
-          showTagFilter}
+          showTagFilter ||
+          showFilenameIssues}
         class="h-full"
       >
         <AssetGrid

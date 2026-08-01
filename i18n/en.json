@@ -794,6 +794,8 @@
   "filter_by_tags_any_hint": "Show assets carrying at least one of the selected tags.",
   "filter_by_tags_hint": "Shows only assets that have every tag you select — not just any one of them.",
   "filter_people": "Filter people",
+  "filter_unnamed": "Show files not following the naming convention",
+  "filter_unnamed_hint": "Files missing a date or a like count in the filename",
   "find_them_fast": "Find them fast by name with search",
   "fix_incorrect_match": "Fix incorrect match",
   "folders": "Folders",
