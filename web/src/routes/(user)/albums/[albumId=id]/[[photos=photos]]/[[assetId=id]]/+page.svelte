@@ -1033,21 +1033,38 @@
   };
 
   // Wrapping a term in quotes turns a substring search into a whole-word one: "son"
-  // matches "my_son.mp4" but not "season.mp4". Word edges are anything that isn't a
-  // letter or digit, so spaces, underscores, hyphens and punctuation all count as
-  // separators - and the unicode classes keep that true for non-latin filenames.
+  // matches "my_son.mp4" but not "season.mp4". Both straight and curly quotes are
+  // accepted, because iOS and macOS substitute smart quotes as you type and a search
+  // for a literal curly-quoted string would never match anything.
+  const OPENING_QUOTES = new Set(['"', '\u201C', '\u2018', "'"]);
+  const CLOSING_QUOTES = new Set(['"', '\u201D', '\u2019', "'"]);
+
   const parseSearchTerm = (raw: string) => {
     const trimmed = raw.trim();
-    const isQuoted = trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"');
+    const isQuoted = trimmed.length >= 2 && OPENING_QUOTES.has(trimmed[0]) && CLOSING_QUOTES.has(trimmed.at(-1) ?? '');
     return { term: isQuoted ? trimmed.slice(1, -1).trim() : trimmed, wholeWord: isQuoted };
   };
 
+  // a word edge is anything that isn't a letter or digit, so spaces, underscores,
+  // hyphens and dots all separate. Scanning rather than using a lookbehind regex keeps
+  // this working on older Safari, which only gained lookbehind support recently.
+  const isWordCharacter = (character: string) => /[\p{L}\p{N}]/u.test(character);
+
   const matchesSearchTerm = (filename: string, term: string, wholeWord: boolean) => {
+    const haystack = filename.toLowerCase();
+    const needle = term.toLowerCase();
     if (!wholeWord) {
-      return filename.toLowerCase().includes(term.toLowerCase());
+      return haystack.includes(needle);
     }
-    const escaped = term.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-    return new RegExp(String.raw`(?<![\p{L}\p{N}])${escaped}(?![\p{L}\p{N}])`, 'iu').test(filename);
+
+    for (let index = haystack.indexOf(needle); index !== -1; index = haystack.indexOf(needle, index + 1)) {
+      const before = index > 0 ? haystack[index - 1] : '';
+      const after = haystack[index + needle.length] ?? '';
+      if (!isWordCharacter(before) && !isWordCharacter(after)) {
+        return true;
+      }
+    }
+    return false;
   };
 
   const handleGlobalSearch = async () => {
@@ -1289,14 +1306,6 @@
                     size="20"
                     padding="2"
                   />
-                  <CircleIconButton
-                    title={showFilenameIssues ? $t('close') : $t('filter_unnamed')}
-                    onclick={toggleFilenameIssues}
-                    icon={showFilenameIssues ? mdiClose : mdiFileAlertOutline}
-                    color={showFilenameIssues ? 'primary' : undefined}
-                    size="20"
-                    padding="2"
-                  />
                 </div>
               {/if}
 
@@ -1337,6 +1346,14 @@
                     icon={showTagFilter ? mdiClose : mdiTagMultipleOutline}
                     color={showTagFilter ? 'primary' : undefined}
                     disabled={isLoadingTagFilterPickerOptions}
+                    size="20"
+                    padding="2"
+                  />
+                  <CircleIconButton
+                    title={showFilenameIssues ? $t('close') : $t('filter_unnamed')}
+                    onclick={toggleFilenameIssues}
+                    icon={showFilenameIssues ? mdiClose : mdiFileAlertOutline}
+                    color={showFilenameIssues ? 'primary' : undefined}
                     size="20"
                     padding="2"
                   />
