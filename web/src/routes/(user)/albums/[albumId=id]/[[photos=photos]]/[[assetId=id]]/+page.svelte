@@ -1032,8 +1032,26 @@
     }
   };
 
+  // Wrapping a term in quotes turns a substring search into a whole-word one: "son"
+  // matches "my_son.mp4" but not "season.mp4". Word edges are anything that isn't a
+  // letter or digit, so spaces, underscores, hyphens and punctuation all count as
+  // separators - and the unicode classes keep that true for non-latin filenames.
+  const parseSearchTerm = (raw: string) => {
+    const trimmed = raw.trim();
+    const isQuoted = trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"');
+    return { term: isQuoted ? trimmed.slice(1, -1).trim() : trimmed, wholeWord: isQuoted };
+  };
+
+  const matchesSearchTerm = (filename: string, term: string, wholeWord: boolean) => {
+    if (!wholeWord) {
+      return filename.toLowerCase().includes(term.toLowerCase());
+    }
+    const escaped = term.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+    return new RegExp(String.raw`(?<![\p{L}\p{N}])${escaped}(?![\p{L}\p{N}])`, 'iu').test(filename);
+  };
+
   const handleGlobalSearch = async () => {
-    const term = searchTerm.trim();
+    const { term, wholeWord } = parseSearchTerm(searchTerm);
     if (!term) {
       return;
     }
@@ -1041,10 +1059,13 @@
     globalSearchActive = true;
     isSearchingByFilename = true;
     try {
+      // the server only does substring matching, so a quoted term is narrowed here
       const { assets } = await searchAssets({
         metadataSearchDto: { albumIds: [album.id], originalFileName: term },
       });
-      filenameSearchResults = assets.items;
+      filenameSearchResults = wholeWord
+        ? assets.items.filter((asset) => matchesSearchTerm(asset.originalFileName, term, true))
+        : assets.items;
     } catch (error) {
       handleError(error, $t('errors.unable_to_search_for_assets'));
     } finally {
@@ -1074,7 +1095,7 @@
   };
 
   const handleAlbumSearch = async () => {
-    const term = albumSearchTerm.trim().toLowerCase();
+    const { term, wholeWord } = parseSearchTerm(albumSearchTerm);
     if (!term) {
       return;
     }
@@ -1082,7 +1103,7 @@
     albumSearchActive = true;
     await loadAlbumAssetsForSearch();
     albumSearchResults = (albumAssetsForSearch ?? []).filter((asset) =>
-      asset.originalFileName.toLowerCase().includes(term),
+      matchesSearchTerm(asset.originalFileName, term, wholeWord),
     );
   };
 
