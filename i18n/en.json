@@ -799,6 +799,7 @@
   "filter_people": "Filter people",
   "filter_unnamed": "Show files not following the naming convention",
   "filter_unnamed_hint": "Files missing a date or a like count in the filename",
+  "filter_unnamed_pick_sort": "Pick a sort icon above: duration, name, or a duration range. Date and like-count sorts need a filename these files don’t have.",
   "find_them_fast": "Find them fast by name with search",
   "fix_incorrect_match": "Fix incorrect match",
   "folders": "Folders",

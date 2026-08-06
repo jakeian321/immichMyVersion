@@ -245,7 +245,16 @@
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const dateFromViewport: Viewport = $state({ width: 0, height: 100_000 });
 
+  // files without the naming convention have no date or like count to order by, so this
+  // view can only be paired with the sorts that read the file itself
+  type FilenameIssuesSort =
+    | { kind: 'duration'; direction: 'desc' | 'asc' }
+    | { kind: 'name'; direction: 'desc' | 'asc' }
+    | { kind: 'durationRange'; range: { min: number; max: number } };
+
   let showFilenameIssues = $state(false);
+  let filenameIssuesSort = $state<FilenameIssuesSort | null>(null);
+  let filenameIssuesAllAssets: AssetResponseDto[] = $state([]);
   const filenameIssuesView = new PagedAssetView();
   // height is set arbitrarily large so GalleryViewer renders every asset instead of
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
@@ -271,6 +280,14 @@
   // height is set arbitrarily large so GalleryViewer renders every asset instead of
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const nameSortViewport: Viewport = $state({ width: 0, height: 100_000 });
+
+  // true when the naming-convention view is currently paired with this sort, so the
+  // icon reads as chosen even though its own view isn't the one on screen
+  const isIssuesPairing = (kind: 'duration' | 'name', direction: 'desc' | 'asc') =>
+    showFilenameIssues &&
+    filenameIssuesSort !== null &&
+    filenameIssuesSort.kind === kind &&
+    filenameIssuesSort.direction === direction;
 
   const assetInteraction = new AssetInteraction();
   const timelineInteraction = new AssetInteraction();
@@ -497,6 +514,13 @@
       );
 
   const toggleDurationSort = async (direction: 'desc' | 'asc') => {
+    // while the naming-convention view is open the sort icons choose its ordering
+    // rather than opening a view of their own
+    if (showFilenameIssues) {
+      await applyFilenameIssuesSort({ kind: 'duration', direction });
+      return;
+    }
+
     if (showDurationSort && durationSortDirection === direction) {
       showDurationSort = false;
       cancelMultiselect(durationSortInteraction);
@@ -747,9 +771,12 @@
   const hasNamingConvention = (filename: string) =>
     getFilenameDate(filename) !== null && getFilenameLikes(filename) !== null;
 
-  const toggleFilenameIssues = async () => {
+  // opening this view only arms it: nothing is shown until a sort icon is picked, since
+  // an unordered pile of mis-named files isn't much use for renaming them
+  const toggleFilenameIssues = () => {
     if (showFilenameIssues) {
       showFilenameIssues = false;
+      filenameIssuesSort = null;
       cancelMultiselect(filenameIssuesInteraction);
       return;
     }
@@ -763,15 +790,50 @@
     showDateFrom = false;
 
     showFilenameIssues = true;
+    filenameIssuesSort = null;
+    filenameIssuesAllAssets = [];
+    filenameIssuesView.reset();
+  };
+
+  const applyFilenameIssuesSort = async (sort: FilenameIssuesSort) => {
+    filenameIssuesSort = sort;
+    cancelMultiselect(filenameIssuesInteraction);
     filenameIssuesView.beginLoading();
 
     try {
-      const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
-      filenameIssuesView.setAll(fullAlbum.assets.filter((asset) => !hasNamingConvention(asset.originalFileName)));
+      // the album is fetched once and kept, so switching between pairings re-orders
+      // what's already here instead of going back to the server
+      if (filenameIssuesAllAssets.length === 0) {
+        const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
+        filenameIssuesAllAssets = fullAlbum.assets.filter((asset) => !hasNamingConvention(asset.originalFileName));
+      }
+
+      let candidates: AssetResponseDto[];
+      switch (sort.kind) {
+        case 'duration': {
+          candidates = sortByDuration(filenameIssuesAllAssets, sort.direction);
+          break;
+        }
+        case 'name': {
+          candidates = sortByName(filenameIssuesAllAssets, sort.direction);
+          break;
+        }
+        case 'durationRange': {
+          candidates = filenameIssuesAllAssets
+            .filter((asset) => {
+              const seconds = timeToSeconds(asset.duration ?? '0:00:00.00000');
+              return seconds >= sort.range.min && seconds <= sort.range.max;
+            })
+            .sort((a, b) => timeToSeconds(a.duration) - timeToSeconds(b.duration));
+          break;
+        }
+      }
+
+      filenameIssuesView.setAll(candidates);
     } catch (error) {
       handleError(error, $t('errors.unable_to_load_album'));
       filenameIssuesView.reset();
-      showFilenameIssues = false;
+      filenameIssuesSort = null;
     }
   };
 
@@ -804,7 +866,8 @@
   };
 
   const toggleDurationFilter = () => {
-    if (showDurationFilter) {
+    // while the naming-convention view is open this narrows that view instead
+    if (showDurationFilter && !showFilenameIssues) {
       showDurationFilter = false;
       cancelMultiselect(durationFilterInteraction);
       return;
@@ -820,6 +883,12 @@
     }
 
     isDurationFilterPromptOpen = false;
+
+    if (showFilenameIssues) {
+      await applyFilenameIssuesSort({ kind: 'durationRange', range });
+      return;
+    }
+
     durationFilterRange = range;
 
     // the sort views render in a fixed priority order, so close the others to make
@@ -952,6 +1021,13 @@
     });
 
   const toggleNameSort = async (direction: 'desc' | 'asc') => {
+    // while the naming-convention view is open the sort icons choose its ordering
+    // rather than opening a view of their own
+    if (showFilenameIssues) {
+      await applyFilenameIssuesSort({ kind: 'name', direction });
+      return;
+    }
+
     if (showNameSort && nameSortDirection === direction) {
       showNameSort = false;
       cancelMultiselect(nameSortInteraction);
@@ -1335,7 +1411,9 @@
                     icon={showDurationSort && durationSortDirection === 'desc'
                       ? mdiClose
                       : mdiSortClockDescendingOutline}
-                    color={showDurationSort && durationSortDirection === 'desc' ? 'primary' : undefined}
+                    color={(showDurationSort && durationSortDirection === 'desc') || isIssuesPairing('duration', 'desc')
+                      ? 'primary'
+                      : undefined}
                     size="20"
                     padding="2"
                   />
@@ -1345,7 +1423,9 @@
                       : $t('sort_by_duration_ascending')}
                     onclick={() => toggleDurationSort('asc')}
                     icon={showDurationSort && durationSortDirection === 'asc' ? mdiClose : mdiSortClockAscendingOutline}
-                    color={showDurationSort && durationSortDirection === 'asc' ? 'primary' : undefined}
+                    color={(showDurationSort && durationSortDirection === 'asc') || isIssuesPairing('duration', 'asc')
+                      ? 'primary'
+                      : undefined}
                     size="20"
                     padding="2"
                   />
@@ -1358,6 +1438,7 @@
                       ? mdiClose
                       : mdiSortCalendarDescending}
                     color={showFilenameDateSort && filenameDateSortDirection === 'desc' ? 'primary' : undefined}
+                    disabled={showFilenameIssues}
                     size="20"
                     padding="2"
                   />
@@ -1370,6 +1451,7 @@
                       ? mdiClose
                       : mdiSortCalendarAscending}
                     color={showFilenameDateSort && filenameDateSortDirection === 'asc' ? 'primary' : undefined}
+                    disabled={showFilenameIssues}
                     size="20"
                     padding="2"
                   />
@@ -1377,7 +1459,9 @@
                     title={showNameSort && nameSortDirection === 'asc' ? $t('close') : $t('sort_by_name')}
                     onclick={() => toggleNameSort('asc')}
                     icon={showNameSort && nameSortDirection === 'asc' ? mdiClose : mdiSortAlphabeticalAscending}
-                    color={showNameSort && nameSortDirection === 'asc' ? 'primary' : undefined}
+                    color={(showNameSort && nameSortDirection === 'asc') || isIssuesPairing('name', 'asc')
+                      ? 'primary'
+                      : undefined}
                     size="20"
                     padding="2"
                   />
@@ -1385,7 +1469,9 @@
                     title={showNameSort && nameSortDirection === 'desc' ? $t('close') : $t('sort_by_name_descending')}
                     onclick={() => toggleNameSort('desc')}
                     icon={showNameSort && nameSortDirection === 'desc' ? mdiClose : mdiSortAlphabeticalDescending}
-                    color={showNameSort && nameSortDirection === 'desc' ? 'primary' : undefined}
+                    color={(showNameSort && nameSortDirection === 'desc') || isIssuesPairing('name', 'desc')
+                      ? 'primary'
+                      : undefined}
                     size="20"
                     padding="2"
                   />
@@ -1394,6 +1480,7 @@
                     onclick={() => toggleLikesSort('desc')}
                     icon={showLikesSort && likesSortDirection === 'desc' ? mdiClose : mdiSortNumericDescending}
                     color={showLikesSort && likesSortDirection === 'desc' ? 'primary' : undefined}
+                    disabled={showFilenameIssues}
                     size="20"
                     padding="2"
                   />
@@ -1402,6 +1489,7 @@
                     onclick={() => toggleLikesSort('asc')}
                     icon={showLikesSort && likesSortDirection === 'asc' ? mdiClose : mdiSortNumericAscending}
                     color={showLikesSort && likesSortDirection === 'asc' ? 'primary' : undefined}
+                    disabled={showFilenameIssues}
                     size="20"
                     padding="2"
                   />
@@ -1409,7 +1497,9 @@
                     title={showDurationFilter ? $t('close') : $t('filter_by_duration')}
                     onclick={toggleDurationFilter}
                     icon={showDurationFilter ? mdiClose : mdiTimerOutline}
-                    color={showDurationFilter ? 'primary' : undefined}
+                    color={showDurationFilter || (showFilenameIssues && filenameIssuesSort?.kind === 'durationRange')
+                      ? 'primary'
+                      : undefined}
                     size="20"
                     padding="2"
                   />
@@ -1749,7 +1839,9 @@
       {:else if showFilenameIssues}
         <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={filenameIssuesViewport.width}>
           <p class="pb-2 text-center text-sm text-gray-500 dark:text-gray-400">{$t('filter_unnamed_hint')}</p>
-          {#if filenameIssuesView.isLoading}
+          {#if filenameIssuesSort === null}
+            <p class="pt-8 text-center text-sm text-gray-500 dark:text-gray-400">{$t('filter_unnamed_pick_sort')}</p>
+          {:else if filenameIssuesView.isLoading}
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
             </div>
