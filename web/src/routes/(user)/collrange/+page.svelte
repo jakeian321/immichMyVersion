@@ -8,7 +8,8 @@
   import { AppRoute } from '$lib/constants';
   import { getCollectionAlbumIds, getSavedRanges, isCollectionAlbum, isRangesAlbum } from '$lib/utils/album-utils';
   import { handleError } from '$lib/utils/handle-error';
-  import { getAllAlbums, searchAssets, type AlbumResponseDto } from '@immich/sdk';
+  import Thumbnail from '$lib/components/assets/thumbnail/thumbnail.svelte';
+  import { getAlbumInfo, getAllAlbums, searchAssets, type AlbumResponseDto, type AssetResponseDto } from '@immich/sdk';
   import { Input } from '@immich/ui';
   import { mdiCheckCircle, mdiCircleOutline, mdiClose, mdiMagnify } from '@mdi/js';
   import { t } from 'svelte-i18n';
@@ -68,6 +69,7 @@
     if (notInAnyCollection) {
       selectedCollectionIds.clear();
     }
+    clearCollectionFileSearch();
   };
 
   const toggleCollectionFilter = (collectionId: string) => {
@@ -77,6 +79,8 @@
       selectedCollectionIds.add(collectionId);
       notInAnyCollection = false;
     }
+    // the results below belong to the previous selection, so they'd be misleading
+    clearCollectionFileSearch();
   };
 
   // find albums containing at least one asset whose filename matches the term: search
@@ -118,6 +122,70 @@
   const clearFilenameSearch = () => {
     filenameTerm = '';
     filenameMatchedAlbumIds = null;
+  };
+
+  // ---- filename search scoped to the selected collection ----
+
+  // one album holding hundreds of matches would bury every other album in the
+  // collection, so each album contributes at most this many before it's summarised
+  const MAX_FILES_PER_ALBUM = 4;
+  // albums are fetched a few at a time: enough to stay quick over a collection of
+  // dozens without opening one request per album at once
+  const ALBUM_FETCH_CHUNK = 5;
+
+  type AlbumFileMatches = { album: AlbumResponseDto; assets: AssetResponseDto[]; total: number };
+
+  let collectionFileTerm = $state('');
+  let collectionFileResults = $state<AlbumFileMatches[] | null>(null);
+  let isSearchingCollectionFiles = $state(false);
+
+  const clearCollectionFileSearch = () => {
+    collectionFileTerm = '';
+    collectionFileResults = null;
+  };
+
+  // unlike the search above, this reads the albums' own asset lists rather than the
+  // global asset search, which caps its response and so can't be trusted to have found
+  // every match inside a given album
+  const searchCollectionFiles = async () => {
+    const term = collectionFileTerm.trim().toLowerCase();
+    if (!term) {
+      collectionFileResults = null;
+      return;
+    }
+
+    isSearchingCollectionFiles = true;
+    try {
+      const targets = filteredAlbums;
+      const results: AlbumFileMatches[] = [];
+
+      for (let index = 0; index < targets.length; index += ALBUM_FETCH_CHUNK) {
+        const chunk = targets.slice(index, index + ALBUM_FETCH_CHUNK);
+        const infos = await Promise.all(
+          chunk.map((album) => getAlbumInfo({ id: album.id, withoutAssets: false }).catch(() => null)),
+        );
+
+        for (const [position, info] of infos.entries()) {
+          if (!info) {
+            continue;
+          }
+          const matches = info.assets.filter((asset) => asset.originalFileName.toLowerCase().includes(term));
+          if (matches.length > 0) {
+            results.push({
+              album: chunk[position],
+              assets: matches.slice(0, MAX_FILES_PER_ALBUM),
+              total: matches.length,
+            });
+          }
+        }
+      }
+
+      collectionFileResults = results.sort((a, b) => b.total - a.total);
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_search_for_assets'));
+    } finally {
+      isSearchingCollectionFiles = false;
+    }
   };
 
   // until any filter is chosen the page shows a plain list; thumbnails only appear
@@ -252,6 +320,32 @@
       {/each}
     </div>
 
+    <!-- filename search scoped to the albums of the selected collection -->
+    {#if selectedCollectionIds.size > 0}
+      <form
+        class="flex max-w-md items-center gap-2"
+        onsubmit={(event) => {
+          event.preventDefault();
+          void searchCollectionFiles();
+        }}
+      >
+        <Input
+          class="flex-1"
+          bind:value={collectionFileTerm}
+          placeholder={$t('search_files_in_collection')}
+          aria-label={$t('search_files_in_collection')}
+        />
+        <Button type="submit" size="sm" disabled={isSearchingCollectionFiles}>
+          <Icon path={mdiMagnify} size="18" />
+        </Button>
+        {#if collectionFileResults}
+          <Button type="button" size="sm" color="gray" onclick={clearCollectionFileSearch}>
+            <Icon path={mdiClose} size="18" />
+          </Button>
+        {/if}
+      </form>
+    {/if}
+
     <!-- selection controls -->
     <div class="flex items-center gap-2">
       <Button size="sm" color={selectionMode ? 'primary' : 'gray'} onclick={toggleSelectionMode}>
@@ -274,8 +368,46 @@
       </p>
     </div>
 
-    <!-- results: thumbnails once filtered, a compact list before that -->
-    {#if hasActiveFilter}
+    <!-- results: matching files grouped by album, once a collection search has run -->
+    {#if isSearchingCollectionFiles}
+      <p class="text-sm text-gray-500 dark:text-gray-400">{$t('loading')}</p>
+    {:else if collectionFileResults}
+      {#if collectionFileResults.length === 0}
+        <p class="text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
+      {:else}
+        <div class="flex flex-col gap-6">
+          {#each collectionFileResults as result (result.album.id)}
+            <div class="flex flex-col gap-2">
+              <button
+                type="button"
+                class="flex items-baseline gap-2 text-start"
+                onclick={() => goto(`${AppRoute.ALBUMS}/${result.album.id}`)}
+              >
+                <span class="line-clamp-1 text-sm font-medium text-black dark:text-white">
+                  {result.album.albumName}
+                </span>
+                <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">
+                  {result.total > result.assets.length
+                    ? $t('showing_of_matches', { values: { shown: result.assets.length, total: result.total } })
+                    : $t('items_count', { values: { count: result.total } })}
+                </span>
+              </button>
+              <div class="flex flex-wrap gap-2">
+                {#each result.assets as asset (asset.id)}
+                  <Thumbnail
+                    {asset}
+                    thumbnailSize={120}
+                    readonly
+                    onClick={() => goto(`${AppRoute.ALBUMS}/${result.album.id}`)}
+                  />
+                {/each}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+      <!-- results: thumbnails once filtered, a compact list before that -->
+    {:else if hasActiveFilter}
       <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {#each filteredAlbums as album (album.id)}
           <div class="relative">
@@ -329,7 +461,7 @@
       </div>
     {/if}
 
-    {#if filteredAlbums.length === 0}
+    {#if filteredAlbums.length === 0 && !collectionFileResults && !isSearchingCollectionFiles}
       <p class="text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
     {/if}
   </div>
