@@ -80,6 +80,7 @@
   } from '@immich/sdk';
   import {
     mdiArrowLeft,
+    mdiCalendarStart,
     mdiClose,
     mdiCogOutline,
     mdiDeleteOutline,
@@ -235,6 +236,15 @@
   // (e.g. after changing the tag selection) never re-fetches it
   const assetTagsCache = new Map<string, { id: string; value: string }[]>();
 
+  let showDateFrom = $state(false);
+  let isDateFromPromptOpen = $state(false);
+  let dateFromInput = $state('');
+  let dateFromValue = $state<number | null>(null);
+  const dateFromView = new PagedAssetView();
+  // height is set arbitrarily large so GalleryViewer renders every asset instead of
+  // virtualizing based on window scroll position, which doesn't track this view's scroll container
+  const dateFromViewport: Viewport = $state({ width: 0, height: 100_000 });
+
   let showFilenameIssues = $state(false);
   const filenameIssuesView = new PagedAssetView();
   // height is set arbitrarily large so GalleryViewer renders every asset instead of
@@ -271,6 +281,7 @@
   const durationFilterInteraction = new AssetInteraction();
   const tagFilterInteraction = new AssetInteraction();
   const filenameIssuesInteraction = new AssetInteraction();
+  const dateFromInteraction = new AssetInteraction();
 
   afterNavigate(({ from }) => {
     let url: string | undefined = from?.url?.pathname;
@@ -507,6 +518,7 @@
     showDurationFilter = false;
     showTagFilter = false;
     showFilenameIssues = false;
+    showDateFrom = false;
 
     showDurationSort = true;
     durationSortAllAssets = [];
@@ -569,6 +581,7 @@
     showDurationFilter = false;
     showTagFilter = false;
     showFilenameIssues = false;
+    showDateFrom = false;
 
     showFilenameDateSort = true;
     filenameDateSortAllAssets = [];
@@ -582,6 +595,95 @@
       handleError(error, $t('errors.unable_to_load_album'));
       filenameDateSortView.reset();
       showFilenameDateSort = false;
+    }
+  };
+
+  // accepts the compact form the filenames themselves use plus the two everyday
+  // separators, so you don't have to remember which one this box wants:
+  // 20250115, 2025-01-15, 2025/01/15, 01-15-2025, 01/15/2025
+  const parseDateInput = (input: string): number | null => {
+    const trimmed = input.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    let year: number, month: number, day: number;
+
+    const compact = trimmed.match(/^(\d{4})(\d{2})(\d{2})$/);
+    const isoish = trimmed.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+    const usual = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+
+    if (compact) {
+      [, year, month, day] = compact.map(Number) as [number, number, number, number];
+    } else if (isoish) {
+      [, year, month, day] = isoish.map(Number) as [number, number, number, number];
+    } else if (usual) {
+      [, month, day, year] = usual.map(Number) as [number, number, number, number];
+    } else {
+      return null;
+    }
+
+    if (month < 1 || month > 12 || day < 1 || day > 31) {
+      return null;
+    }
+
+    const date = new Date(year, month - 1, day);
+    // rejects overflow like 2025-02-30, which Date would silently roll into March
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+      return null;
+    }
+    return date.getTime();
+  };
+
+  const toggleDateFrom = () => {
+    if (showDateFrom) {
+      showDateFrom = false;
+      cancelMultiselect(dateFromInteraction);
+      return;
+    }
+    dateFromInput = '';
+    isDateFromPromptOpen = true;
+  };
+
+  // shows everything dated on or after the given day, oldest first, so the view reads
+  // forwards from the date you typed. Filenames with no parseable date can't be placed
+  // on the timeline at all, so they're left out.
+  const applyDateFrom = async () => {
+    const from = parseDateInput(dateFromInput);
+    if (from === null) {
+      return;
+    }
+
+    isDateFromPromptOpen = false;
+    dateFromValue = from;
+
+    // the sort views render in a fixed priority order, so close the others to make
+    // sure this one actually becomes visible
+    showDurationSort = false;
+    showFilenameDateSort = false;
+    showNameSort = false;
+    showLikesSort = false;
+    showDurationFilter = false;
+    showTagFilter = false;
+    showFilenameIssues = false;
+
+    showDateFrom = true;
+    dateFromView.beginLoading();
+
+    try {
+      const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
+      const candidates = fullAlbum.assets
+        .map((asset) => ({ asset, date: getFilenameDate(asset.originalFileName) }))
+        .filter(
+          (entry): entry is { asset: AssetResponseDto; date: number } => entry.date !== null && entry.date >= from,
+        )
+        .sort((a, b) => a.date - b.date)
+        .map((entry) => entry.asset);
+      dateFromView.scan(candidates, isUntaggedAsset, CONCURRENT_TAG_CHECKS);
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_load_album'));
+      dateFromView.reset();
+      showDateFrom = false;
     }
   };
 
@@ -621,6 +723,7 @@
     showDurationFilter = false;
     showTagFilter = false;
     showFilenameIssues = false;
+    showDateFrom = false;
 
     showLikesSort = true;
     likesSortAllAssets = [];
@@ -657,6 +760,7 @@
     showLikesSort = false;
     showDurationFilter = false;
     showTagFilter = false;
+    showDateFrom = false;
 
     showFilenameIssues = true;
     filenameIssuesView.beginLoading();
@@ -726,6 +830,7 @@
     showLikesSort = false;
     showTagFilter = false;
     showFilenameIssues = false;
+    showDateFrom = false;
 
     showDurationFilter = true;
     durationFilterView.beginLoading();
@@ -806,6 +911,7 @@
     showNameSort = false;
     showLikesSort = false;
     showDurationFilter = false;
+    showDateFrom = false;
 
     showTagFilter = true;
     tagFilterView.beginLoading();
@@ -869,6 +975,7 @@
     showDurationFilter = false;
     showTagFilter = false;
     showFilenameIssues = false;
+    showDateFrom = false;
 
     showNameSort = true;
     nameSortAllAssets = [];
@@ -1350,6 +1457,14 @@
                     padding="2"
                   />
                   <CircleIconButton
+                    title={showDateFrom ? $t('close') : $t('filter_from_date')}
+                    onclick={toggleDateFrom}
+                    icon={showDateFrom ? mdiClose : mdiCalendarStart}
+                    color={showDateFrom ? 'primary' : undefined}
+                    size="20"
+                    padding="2"
+                  />
+                  <CircleIconButton
                     title={showFilenameIssues ? $t('close') : $t('filter_unnamed')}
                     onclick={toggleFilenameIssues}
                     icon={showFilenameIssues ? mdiClose : mdiFileAlertOutline}
@@ -1607,6 +1722,30 @@
             <AssetPageControls view={durationFilterView} />
           {/if}
         </section>
+      {:else if showDateFrom}
+        <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={dateFromViewport.width}>
+          {#if dateFromValue !== null}
+            <p class="pb-2 text-center text-sm text-gray-500 dark:text-gray-400">
+              {$t('filter_from_date_active', { values: { date: new Date(dateFromValue).toLocaleDateString() } })}
+            </p>
+          {/if}
+          {#if dateFromView.isLoading}
+            <div class="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+          {:else if dateFromView.matched.length === 0}
+            <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
+          {:else}
+            <GalleryViewer
+              assets={dateFromView.pageAssets}
+              assetInteraction={dateFromInteraction}
+              viewport={dateFromViewport}
+              videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
+              disableAssetSelect
+            />
+            <AssetPageControls view={dateFromView} />
+          {/if}
+        </section>
       {:else if showFilenameIssues}
         <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={filenameIssuesViewport.width}>
           <p class="pb-2 text-center text-sm text-gray-500 dark:text-gray-400">{$t('filter_unnamed_hint')}</p>
@@ -1668,7 +1807,8 @@
           showLikesSort ||
           showDurationFilter ||
           showTagFilter ||
-          showFilenameIssues}
+          showFilenameIssues ||
+          showDateFrom}
         class="h-full"
       >
         <AssetGrid
@@ -1873,6 +2013,33 @@
     {#snippet stickyBottom()}
       <Button color="gray" fullwidth onclick={() => (isDurationFilterPromptOpen = false)}>{$t('cancel')}</Button>
       <Button type="submit" form="duration-filter-form" fullwidth>{$t('search')}</Button>
+    {/snippet}
+  </FullScreenModal>
+{/if}
+
+{#if isDateFromPromptOpen}
+  <FullScreenModal
+    title={$t('filter_from_date')}
+    icon={mdiCalendarStart}
+    onClose={() => (isDateFromPromptOpen = false)}
+  >
+    <form
+      id="date-from-form"
+      autocomplete="off"
+      onsubmit={(event) => {
+        event.preventDefault();
+        void applyDateFrom();
+      }}
+    >
+      <div class="my-4 flex flex-col gap-2">
+        <Input bind:value={dateFromInput} autofocus placeholder="20250115" aria-label={$t('filter_from_date')} />
+        <p class="text-sm text-gray-500 dark:text-gray-300">{$t('filter_from_date_hint')}</p>
+      </div>
+    </form>
+
+    {#snippet stickyBottom()}
+      <Button color="gray" fullwidth onclick={() => (isDateFromPromptOpen = false)}>{$t('cancel')}</Button>
+      <Button type="submit" form="date-from-form" fullwidth>{$t('search')}</Button>
     {/snippet}
   </FullScreenModal>
 {/if}
