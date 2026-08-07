@@ -281,6 +281,94 @@
   // virtualizing based on window scroll position, which doesn't track this view's scroll container
   const nameSortViewport: Viewport = $state({ width: 0, height: 100_000 });
 
+  // A sort icon clicked while some other view is already open doesn't replace that view:
+  // it re-orders just the page of 50 on screen. So "date, then likes" reads as the dated
+  // files in date order, with the most-liked of each 50 floated to the top of that page.
+  type SecondarySort = { kind: 'duration' | 'date' | 'name' | 'likes'; direction: 'desc' | 'asc' };
+
+  let secondarySort = $state<SecondarySort | null>(null);
+
+  // the views the sort icons can layer on top of. The naming-convention view is absent
+  // on purpose: its sort icons already choose its own ordering.
+  let hasPrimaryView = $derived(
+    showDurationSort ||
+      showFilenameDateSort ||
+      showNameSort ||
+      showLikesSort ||
+      showDurationFilter ||
+      showTagFilter ||
+      showDateFrom,
+  );
+
+  // closing the last view drops the secondary sort with it, so reopening something
+  // later never starts out with an ordering you can't see the reason for
+  $effect(() => {
+    if (!hasPrimaryView) {
+      secondarySort = null;
+    }
+  });
+
+  const setSecondarySort = (kind: SecondarySort['kind'], direction: 'desc' | 'asc') => {
+    secondarySort = secondarySort?.kind === kind && secondarySort.direction === direction ? null : { kind, direction };
+  };
+
+  const isSecondarySort = (kind: SecondarySort['kind'], direction: 'desc' | 'asc') =>
+    secondarySort !== null && secondarySort.kind === kind && secondarySort.direction === direction;
+
+  const secondarySortKey = (asset: AssetResponseDto, kind: SecondarySort['kind']): number | string | null => {
+    switch (kind) {
+      case 'duration': {
+        return timeToSeconds(asset.duration ?? '0:00:00.00000');
+      }
+      case 'date': {
+        return getFilenameDate(asset.originalFileName);
+      }
+      case 'likes': {
+        return getFilenameLikes(asset.originalFileName);
+      }
+      case 'name': {
+        return asset.originalFileName;
+      }
+    }
+  };
+
+  // anything the sort can't read - no like count in the filename, no parseable date -
+  // sinks to the bottom in its original order rather than being dropped or sorted as 0
+  const applySecondarySort = (assets: AssetResponseDto[]): AssetResponseDto[] => {
+    const sort = secondarySort;
+    if (!sort) {
+      return assets;
+    }
+
+    return assets
+      .map((asset, index) => ({ asset, index, key: secondarySortKey(asset, sort.kind) }))
+      .sort((a, b) => {
+        if (a.key === null || b.key === null) {
+          return a.key === b.key ? a.index - b.index : a.key === null ? 1 : -1;
+        }
+        const comparison =
+          typeof a.key === 'string' && typeof b.key === 'string'
+            ? a.key.localeCompare(b.key, undefined, { numeric: true, sensitivity: 'base' })
+            : (a.key as number) - (b.key as number);
+        return sort.direction === 'desc' ? -comparison : comparison;
+      })
+      .map((entry) => entry.asset);
+  };
+
+  const sortIconColor = (
+    isActiveView: boolean,
+    kind: SecondarySort['kind'],
+    direction: 'desc' | 'asc',
+  ): 'primary' | 'neutral' | undefined => {
+    if (isActiveView) {
+      return 'primary';
+    }
+    if ((kind === 'duration' || kind === 'name') && isIssuesPairing(kind, direction)) {
+      return 'primary';
+    }
+    return isSecondarySort(kind, direction) ? 'neutral' : undefined;
+  };
+
   // true when the naming-convention view is currently paired with this sort, so the
   // icon reads as chosen even though its own view isn't the one on screen
   const isIssuesPairing = (kind: 'duration' | 'name', direction: 'desc' | 'asc') =>
@@ -521,6 +609,13 @@
       return;
     }
 
+    // with another view already open this click layers a sort on the page shown
+    // instead of replacing it; only the icon owning the open view still toggles it
+    if (hasPrimaryView && !showDurationSort) {
+      setSecondarySort('duration', direction);
+      return;
+    }
+
     if (showDurationSort && durationSortDirection === direction) {
       showDurationSort = false;
       cancelMultiselect(durationSortInteraction);
@@ -584,6 +679,13 @@
       .map((entry) => entry.asset);
 
   const toggleFilenameDateSort = async (direction: 'desc' | 'asc') => {
+    // with another view already open this click layers a sort on the page shown
+    // instead of replacing it; only the icon owning the open view still toggles it
+    if (hasPrimaryView && !showFilenameDateSort) {
+      setSecondarySort('date', direction);
+      return;
+    }
+
     if (showFilenameDateSort && filenameDateSortDirection === direction) {
       showFilenameDateSort = false;
       cancelMultiselect(filenameDateSortInteraction);
@@ -724,6 +826,13 @@
       .map((entry) => entry.asset);
 
   const toggleLikesSort = async (direction: 'desc' | 'asc') => {
+    // with another view already open this click layers a sort on the page shown
+    // instead of replacing it; only the icon owning the open view still toggles it
+    if (hasPrimaryView && !showLikesSort) {
+      setSecondarySort('likes', direction);
+      return;
+    }
+
     if (showLikesSort && likesSortDirection === direction) {
       showLikesSort = false;
       cancelMultiselect(likesSortInteraction);
@@ -1025,6 +1134,13 @@
     // rather than opening a view of their own
     if (showFilenameIssues) {
       await applyFilenameIssuesSort({ kind: 'name', direction });
+      return;
+    }
+
+    // with another view already open this click layers a sort on the page shown
+    // instead of replacing it; only the icon owning the open view still toggles it
+    if (hasPrimaryView && !showNameSort) {
+      setSecondarySort('name', direction);
       return;
     }
 
@@ -1347,6 +1463,14 @@
   );
 </script>
 
+<!-- the highlighted icon says which sort is layered on; this says how far it reaches,
+     since re-ordering only the page on screen is easy to mistake for a broken sort -->
+{#snippet secondarySortNote()}
+  {#if secondarySort}
+    <p class="pb-2 text-center text-sm text-gray-500 dark:text-gray-400">{$t('secondary_sort_hint')}</p>
+  {/if}
+{/snippet}
+
 <div class="flex overflow-hidden" use:scrollMemoryClearer={{ routeStartsWith: AppRoute.ALBUMS }}>
   <div class="relative w-full shrink">
     {#if assetInteraction.selectionActive}
@@ -1411,9 +1535,7 @@
                     icon={showDurationSort && durationSortDirection === 'desc'
                       ? mdiClose
                       : mdiSortClockDescendingOutline}
-                    color={(showDurationSort && durationSortDirection === 'desc') || isIssuesPairing('duration', 'desc')
-                      ? 'primary'
-                      : undefined}
+                    color={sortIconColor(showDurationSort && durationSortDirection === 'desc', 'duration', 'desc')}
                     size="20"
                     padding="2"
                   />
@@ -1423,9 +1545,7 @@
                       : $t('sort_by_duration_ascending')}
                     onclick={() => toggleDurationSort('asc')}
                     icon={showDurationSort && durationSortDirection === 'asc' ? mdiClose : mdiSortClockAscendingOutline}
-                    color={(showDurationSort && durationSortDirection === 'asc') || isIssuesPairing('duration', 'asc')
-                      ? 'primary'
-                      : undefined}
+                    color={sortIconColor(showDurationSort && durationSortDirection === 'asc', 'duration', 'asc')}
                     size="20"
                     padding="2"
                   />
@@ -1437,7 +1557,7 @@
                     icon={showFilenameDateSort && filenameDateSortDirection === 'desc'
                       ? mdiClose
                       : mdiSortCalendarDescending}
-                    color={showFilenameDateSort && filenameDateSortDirection === 'desc' ? 'primary' : undefined}
+                    color={sortIconColor(showFilenameDateSort && filenameDateSortDirection === 'desc', 'date', 'desc')}
                     disabled={showFilenameIssues}
                     size="20"
                     padding="2"
@@ -1450,7 +1570,7 @@
                     icon={showFilenameDateSort && filenameDateSortDirection === 'asc'
                       ? mdiClose
                       : mdiSortCalendarAscending}
-                    color={showFilenameDateSort && filenameDateSortDirection === 'asc' ? 'primary' : undefined}
+                    color={sortIconColor(showFilenameDateSort && filenameDateSortDirection === 'asc', 'date', 'asc')}
                     disabled={showFilenameIssues}
                     size="20"
                     padding="2"
@@ -1459,9 +1579,7 @@
                     title={showNameSort && nameSortDirection === 'asc' ? $t('close') : $t('sort_by_name')}
                     onclick={() => toggleNameSort('asc')}
                     icon={showNameSort && nameSortDirection === 'asc' ? mdiClose : mdiSortAlphabeticalAscending}
-                    color={(showNameSort && nameSortDirection === 'asc') || isIssuesPairing('name', 'asc')
-                      ? 'primary'
-                      : undefined}
+                    color={sortIconColor(showNameSort && nameSortDirection === 'asc', 'name', 'asc')}
                     size="20"
                     padding="2"
                   />
@@ -1469,9 +1587,7 @@
                     title={showNameSort && nameSortDirection === 'desc' ? $t('close') : $t('sort_by_name_descending')}
                     onclick={() => toggleNameSort('desc')}
                     icon={showNameSort && nameSortDirection === 'desc' ? mdiClose : mdiSortAlphabeticalDescending}
-                    color={(showNameSort && nameSortDirection === 'desc') || isIssuesPairing('name', 'desc')
-                      ? 'primary'
-                      : undefined}
+                    color={sortIconColor(showNameSort && nameSortDirection === 'desc', 'name', 'desc')}
                     size="20"
                     padding="2"
                   />
@@ -1479,7 +1595,7 @@
                     title={showLikesSort && likesSortDirection === 'desc' ? $t('close') : $t('sort_by_likes')}
                     onclick={() => toggleLikesSort('desc')}
                     icon={showLikesSort && likesSortDirection === 'desc' ? mdiClose : mdiSortNumericDescending}
-                    color={showLikesSort && likesSortDirection === 'desc' ? 'primary' : undefined}
+                    color={sortIconColor(showLikesSort && likesSortDirection === 'desc', 'likes', 'desc')}
                     disabled={showFilenameIssues}
                     size="20"
                     padding="2"
@@ -1488,7 +1604,7 @@
                     title={showLikesSort && likesSortDirection === 'asc' ? $t('close') : $t('sort_by_likes_ascending')}
                     onclick={() => toggleLikesSort('asc')}
                     icon={showLikesSort && likesSortDirection === 'asc' ? mdiClose : mdiSortNumericAscending}
-                    color={showLikesSort && likesSortDirection === 'asc' ? 'primary' : undefined}
+                    color={sortIconColor(showLikesSort && likesSortDirection === 'asc', 'likes', 'asc')}
                     disabled={showFilenameIssues}
                     size="20"
                     padding="2"
@@ -1713,6 +1829,7 @@
         </section>
       {:else if showDurationSort}
         <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={durationSortViewport.width}>
+          {@render secondarySortNote()}
           {#if durationSortView.isLoading}
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
@@ -1721,7 +1838,7 @@
             <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
-              assets={durationSortView.pageAssets}
+              assets={applySecondarySort(durationSortView.pageAssets)}
               assetInteraction={durationSortInteraction}
               viewport={durationSortViewport}
               videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
@@ -1732,6 +1849,7 @@
         </section>
       {:else if showFilenameDateSort}
         <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={filenameDateSortViewport.width}>
+          {@render secondarySortNote()}
           {#if filenameDateSortView.isLoading}
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
@@ -1740,7 +1858,7 @@
             <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
-              assets={filenameDateSortView.pageAssets}
+              assets={applySecondarySort(filenameDateSortView.pageAssets)}
               assetInteraction={filenameDateSortInteraction}
               viewport={filenameDateSortViewport}
               videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
@@ -1751,6 +1869,7 @@
         </section>
       {:else if showNameSort}
         <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={nameSortViewport.width}>
+          {@render secondarySortNote()}
           {#if nameSortView.isLoading}
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
@@ -1759,7 +1878,7 @@
             <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
-              assets={nameSortView.pageAssets}
+              assets={applySecondarySort(nameSortView.pageAssets)}
               assetInteraction={nameSortInteraction}
               viewport={nameSortViewport}
               videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
@@ -1770,6 +1889,7 @@
         </section>
       {:else if showLikesSort}
         <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={likesSortViewport.width}>
+          {@render secondarySortNote()}
           {#if likesSortView.isLoading}
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
@@ -1778,7 +1898,7 @@
             <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
-              assets={likesSortView.pageAssets}
+              assets={applySecondarySort(likesSortView.pageAssets)}
               assetInteraction={likesSortInteraction}
               viewport={likesSortViewport}
               videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
@@ -1795,6 +1915,7 @@
               {durationFilterRange.max === Number.POSITIVE_INFINITY ? '∞' : `${durationFilterRange.max}s`}
             </p>
           {/if}
+          {@render secondarySortNote()}
           {#if durationFilterView.isLoading}
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
@@ -1803,7 +1924,7 @@
             <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
-              assets={durationFilterView.pageAssets}
+              assets={applySecondarySort(durationFilterView.pageAssets)}
               assetInteraction={durationFilterInteraction}
               viewport={durationFilterViewport}
               videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
@@ -1819,6 +1940,7 @@
               {$t('filter_from_date_active', { values: { date: new Date(dateFromValue).toLocaleDateString() } })}
             </p>
           {/if}
+          {@render secondarySortNote()}
           {#if dateFromView.isLoading}
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
@@ -1827,7 +1949,7 @@
             <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
-              assets={dateFromView.pageAssets}
+              assets={applySecondarySort(dateFromView.pageAssets)}
               assetInteraction={dateFromInteraction}
               viewport={dateFromViewport}
               videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
@@ -1871,6 +1993,7 @@
             </button>
           </div>
 
+          {@render secondarySortNote()}
           {#if tagFilterView.isLoading}
             <div class="flex h-full items-center justify-center">
               <LoadingSpinner />
@@ -1879,7 +2002,7 @@
             <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_results')}</p>
           {:else}
             <GalleryViewer
-              assets={tagFilterView.pageAssets}
+              assets={applySecondarySort(tagFilterView.pageAssets)}
               assetInteraction={tagFilterInteraction}
               viewport={tagFilterViewport}
               videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
