@@ -1175,6 +1175,7 @@
   "scan_all_libraries": "Scan All Libraries",
   "scan_library": "Scan",
   "scan_settings": "Scan Settings",
+  "scanning_album_tags": "Checking {done} of {total} items in this album",
   "scanning_for_album": "Scanning for album...",
   "search": "Search",
   "search_albums": "Search albums",

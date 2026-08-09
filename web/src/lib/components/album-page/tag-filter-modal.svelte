@@ -6,6 +6,7 @@
   import Button from '$lib/components/elements/buttons/button.svelte';
   import Checkbox from '$lib/components/elements/checkbox.svelte';
   import FullScreenModal from '$lib/components/shared-components/full-screen-modal.svelte';
+  import LoadingSpinner from '$lib/components/shared-components/loading-spinner.svelte';
   import { mdiTagMultipleOutline } from '@mdi/js';
   import { t } from 'svelte-i18n';
   import { SvelteSet } from 'svelte/reactivity';
@@ -17,6 +18,9 @@
     showAdvanced?: boolean;
     initialMode?: TagFilterMode;
     initialTagCount?: number | null;
+    /** the option list is still being worked out, so show progress instead of "no tags" */
+    isLoading?: boolean;
+    loadingLabel?: string;
     onApply: (tagIds: string[], mode: TagFilterMode, tagCount: number | null) => void;
     onClose: () => void;
   }
@@ -27,6 +31,8 @@
     showAdvanced = false,
     initialMode = 'all',
     initialTagCount = null,
+    isLoading = false,
+    loadingLabel = '',
     onApply,
     onClose,
   }: Props = $props();
@@ -34,7 +40,8 @@
   let selectedIds = new SvelteSet<string>(initialSelectedIds);
   let mode = $state<TagFilterMode>(initialMode);
   let tagCountInput = $state(initialTagCount === null ? '' : String(initialTagCount));
-  let sortedOptions = [...tagOptions].sort((a, b) => a.value.localeCompare(b.value));
+  // the options can arrive after the modal opens, so this has to track them
+  let sortedOptions = $derived([...tagOptions].sort((a, b) => a.value.localeCompare(b.value)));
 
   const handleToggle = (tagId: string) => {
     if (selectedIds.has(tagId)) {
@@ -91,7 +98,14 @@
     <p class="text-xs text-gray-500 dark:text-gray-400">{$t('total_tag_count_hint')}</p>
   {/if}
 
-  {#if sortedOptions.length === 0}
+  {#if isLoading}
+    <div class="flex flex-col items-center gap-3 py-8">
+      <LoadingSpinner />
+      {#if loadingLabel}
+        <p class="text-sm text-gray-500 dark:text-gray-400">{loadingLabel}</p>
+      {/if}
+    </div>
+  {:else if sortedOptions.length === 0}
     <p class="py-4 text-sm">{$t('no_tags_exist')}</p>
   {:else}
     <div class="my-4 flex max-h-96 flex-col gap-3 overflow-y-auto">
@@ -109,7 +123,7 @@
 
   {#snippet stickyBottom()}
     <Button color="gray" fullwidth onclick={onClose}>{$t('cancel')}</Button>
-    <Button fullwidth disabled={sortedOptions.length === 0} onclick={handleApply}>
+    <Button fullwidth disabled={isLoading || sortedOptions.length === 0} onclick={handleApply}>
       {$t('apply')}
     </Button>
   {/snippet}

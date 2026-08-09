@@ -70,7 +70,6 @@
     getActivities,
     getActivityStatistics,
     getAlbumInfo,
-    getAllTags,
     getAssetInfo,
     searchAssets,
     updateAlbumInfo,
@@ -265,6 +264,8 @@
   // brief: just fetching the full tag list, not scanning the album
   let isLoadingTagFilterPickerOptions = $state(false);
   let tagFilterPickerOptions: { id: string; value: string }[] = $state([]);
+  let hasScannedAlbumTags = $state(false);
+  let tagScanProgress = $state({ done: 0, total: 0 });
   let selectedTagFilterIds: string[] = $state([]);
   let tagFilterMode = $state<TagFilterMode>('all');
   let tagFilterCount = $state<number | null>(null);
@@ -1044,9 +1045,42 @@
     }
   };
 
-  // opens the picker right away using the full (small) system-wide tag list, rather than
-  // scanning every asset in the album up front just to know which tags to show - matches
-  // how every other filter view here works: prompt first, compute after you submit
+  // the picker lists only the tags actually used inside this album, so it never offers a
+  // tag that would match nothing here. That means reading every asset's tags up front,
+  // but it's the same scan applying the filter already does - it's moved earlier rather
+  // than added, and the shared cache makes the apply step free afterwards.
+  const scanAlbumTags = async () => {
+    const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
+    const assets = fullAlbum.assets;
+    tagScanProgress = { done: 0, total: assets.length };
+
+    const counts = new Map<string, { id: string; value: string; count: number }>();
+    const queue = [...assets];
+
+    const worker = async () => {
+      for (let asset = queue.shift(); asset !== undefined; asset = queue.shift()) {
+        for (const tag of await getAssetTags(asset.id)) {
+          const entry = counts.get(tag.id);
+          if (entry) {
+            entry.count += 1;
+          } else {
+            counts.set(tag.id, { id: tag.id, value: tag.value, count: 1 });
+          }
+        }
+        tagScanProgress = { ...tagScanProgress, done: tagScanProgress.done + 1 };
+      }
+    };
+
+    await Promise.all(Array.from({ length: CONCURRENT_TAG_CHECKS }, () => worker()));
+
+    // the count says how much each tag would actually return, which is the thing you
+    // want to know when picking one to filter by
+    tagFilterPickerOptions = [...counts.values()]
+      .sort((a, b) => a.value.localeCompare(b.value))
+      .map(({ id, value, count }) => ({ id, value: `${value} (${count})` }));
+    hasScannedAlbumTags = true;
+  };
+
   const openTagFilter = async () => {
     if (showTagFilter) {
       showTagFilter = false;
@@ -1055,19 +1089,23 @@
       return;
     }
 
-    if (tagFilterPickerOptions.length === 0 && !isLoadingTagFilterPickerOptions) {
-      isLoadingTagFilterPickerOptions = true;
-      try {
-        const tags = await getAllTags();
-        tagFilterPickerOptions = tags.map((tag) => ({ id: tag.id, value: tag.value }));
-      } catch (error) {
-        handleError(error, $t('errors.unable_to_load_tags'));
-      } finally {
-        isLoadingTagFilterPickerOptions = false;
-      }
+    // opens straight away and fills in as the scan runs, so a big album shows progress
+    // rather than an unexplained pause on the icon
+    isTagFilterPickerOpen = true;
+
+    if (hasScannedAlbumTags || isLoadingTagFilterPickerOptions) {
+      return;
     }
 
-    isTagFilterPickerOpen = true;
+    isLoadingTagFilterPickerOptions = true;
+    try {
+      await scanAlbumTags();
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_load_tags'));
+      isTagFilterPickerOpen = false;
+    } finally {
+      isLoadingTagFilterPickerOptions = false;
+    }
   };
 
   const handleTagFilterApply = async (tagIds: string[], mode: TagFilterMode, tagCount: number | null) => {
@@ -1658,7 +1696,6 @@
                     onclick={() => openTagFilter()}
                     icon={showTagFilter ? mdiClose : mdiTagMultipleOutline}
                     color={showTagFilter ? 'primary' : undefined}
-                    disabled={isLoadingTagFilterPickerOptions}
                     size="20"
                     padding="2"
                   />
@@ -2264,6 +2301,10 @@
     tagOptions={tagFilterPickerOptions}
     initialSelectedIds={selectedTagFilterIds}
     showAdvanced
+    isLoading={isLoadingTagFilterPickerOptions}
+    loadingLabel={$t('scanning_album_tags', {
+      values: { done: tagScanProgress.done, total: tagScanProgress.total },
+    })}
     initialMode={tagFilterMode}
     initialTagCount={tagFilterCount}
     onApply={handleTagFilterApply}
