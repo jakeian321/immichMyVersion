@@ -1,11 +1,11 @@
 <script lang="ts">
   import Button from '$lib/components/elements/buttons/button.svelte';
   import LoadingSpinner from '$lib/components/shared-components/loading-spinner.svelte';
-  import type { PagedAssetView } from '$lib/utils/paged-asset-view.svelte';
+  import type { PagedView } from '$lib/utils/paged-asset-view.svelte';
   import { t } from 'svelte-i18n';
 
   interface Props {
-    view: PagedAssetView;
+    view: PagedView;
   }
 
   let { view }: Props = $props();

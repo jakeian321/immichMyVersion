@@ -50,6 +50,8 @@
   import { openFileUploadDialog } from '$lib/utils/file-uploader';
   import { handleError } from '$lib/utils/handle-error';
   import { PagedAssetView } from '$lib/utils/paged-asset-view.svelte';
+  import { PagedDuplicateView } from '$lib/utils/paged-duplicate-view.svelte';
+  import { chooseDuplicatesToSelect, findDuplicateGroups, type DuplicateGroup } from '$lib/utils/duplicate-detection';
   import {
     isAlbumsRoute,
     isPeopleRoute,
@@ -80,6 +82,7 @@
   import {
     mdiArrowLeft,
     mdiCalendarStart,
+    mdiContentDuplicate,
     mdiClose,
     mdiCogOutline,
     mdiDeleteOutline,
@@ -234,6 +237,14 @@
   // per-asset tags, cached for the lifetime of this page visit so re-checking an asset
   // (e.g. after changing the tag selection) never re-fetches it
   const assetTagsCache = new Map<string, { id: string; value: string }[]>();
+
+  let showDuplicates = $state(false);
+  const duplicatesView = new PagedDuplicateView();
+  // height is set arbitrarily large so GalleryViewer renders every asset instead of
+  // virtualizing based on window scroll position, which doesn't track this view's scroll container
+  const duplicatesViewport: Viewport = $state({ width: 0, height: 100_000 });
+  let isSelectingDuplicates = $state(false);
+  let duplicateFlaggedCount = $state(0);
 
   let showDateFrom = $state(false);
   let isDateFromPromptOpen = $state(false);
@@ -639,6 +650,7 @@
     showTagFilter = false;
     showFilenameIssues = false;
     showDateFrom = false;
+    showDuplicates = false;
 
     showDurationSort = true;
     durationSortAllAssets = [];
@@ -709,6 +721,7 @@
     showTagFilter = false;
     showFilenameIssues = false;
     showDateFrom = false;
+    showDuplicates = false;
 
     showFilenameDateSort = true;
     filenameDateSortAllAssets = [];
@@ -793,6 +806,7 @@
     showDurationFilter = false;
     showTagFilter = false;
     showFilenameIssues = false;
+    showDuplicates = false;
 
     showDateFrom = true;
     dateFromView.beginLoading();
@@ -858,6 +872,7 @@
     showTagFilter = false;
     showFilenameIssues = false;
     showDateFrom = false;
+    showDuplicates = false;
 
     showLikesSort = true;
     likesSortAllAssets = [];
@@ -898,11 +913,79 @@
     showDurationFilter = false;
     showTagFilter = false;
     showDateFrom = false;
+    showDuplicates = false;
 
     showFilenameIssues = true;
     filenameIssuesSort = null;
     filenameIssuesAllAssets = [];
     filenameIssuesView.reset();
+  };
+
+  // Everything the duplicate scan reads - filename, duration and file size - already
+  // arrives with the album, so finding the groups costs no extra requests at all.
+  const toggleDuplicates = async () => {
+    if (showDuplicates) {
+      showDuplicates = false;
+      cancelMultiselect(assetInteraction);
+      return;
+    }
+
+    showDurationSort = false;
+    showFilenameDateSort = false;
+    showNameSort = false;
+    showLikesSort = false;
+    showDurationFilter = false;
+    showTagFilter = false;
+    showFilenameIssues = false;
+    showDateFrom = false;
+
+    showDuplicates = true;
+    duplicateFlaggedCount = 0;
+    duplicatesView.beginLoading();
+
+    try {
+      const fullAlbum = await getAlbumInfo({ id: album.id, withoutAssets: false });
+      duplicatesView.setGroups(findDuplicateGroups(fullAlbum.assets));
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_load_album'));
+      duplicatesView.reset();
+      showDuplicates = false;
+    }
+  };
+
+  // Only the assets already in a duplicate group need their tags read - a small slice of
+  // the album - because tags decide nothing except which copy of a group survives.
+  const selectDuplicates = async (groups: DuplicateGroup[]) => {
+    isSelectingDuplicates = true;
+
+    try {
+      const assets = groups.flatMap((group) => group.assets);
+      const tagged = new Set<string>();
+      const queue = [...assets];
+
+      const worker = async () => {
+        for (let asset = queue.shift(); asset !== undefined; asset = queue.shift()) {
+          const tags = await getAssetTags(asset.id);
+          if (tags.length > 0) {
+            tagged.add(asset.id);
+          }
+        }
+      };
+
+      await Promise.all(Array.from({ length: CONCURRENT_TAG_CHECKS }, () => worker()));
+
+      const { selectedIds, flaggedGroups } = chooseDuplicatesToSelect(groups, tagged);
+      duplicateFlaggedCount = flaggedGroups.length;
+
+      const byId = new Map(assets.map((asset) => [asset.id, asset]));
+      assetInteraction.selectAssets(
+        selectedIds.map((id) => byId.get(id)).filter((asset): asset is AssetResponseDto => asset !== undefined),
+      );
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_load_assets'));
+    } finally {
+      isSelectingDuplicates = false;
+    }
   };
 
   const applyFilenameIssuesSort = async (sort: FilenameIssuesSort) => {
@@ -1010,6 +1093,7 @@
     showTagFilter = false;
     showFilenameIssues = false;
     showDateFrom = false;
+    showDuplicates = false;
 
     showDurationFilter = true;
     durationFilterView.beginLoading();
@@ -1128,6 +1212,7 @@
     showLikesSort = false;
     showDurationFilter = false;
     showDateFrom = false;
+    showDuplicates = false;
 
     showTagFilter = true;
     tagFilterView.beginLoading();
@@ -1206,6 +1291,7 @@
     showTagFilter = false;
     showFilenameIssues = false;
     showDateFrom = false;
+    showDuplicates = false;
 
     showNameSort = true;
     nameSortAllAssets = [];
@@ -1259,6 +1345,9 @@
 
   const handleRemoveAssets = async (assetIds: string[]) => {
     assetStore.removeAssets(assetIds);
+    // a group that loses copies until one is left is no longer a duplicate, so the
+    // view has to be told rather than left showing what was just deleted
+    duplicatesView.removeAssets(new Set(assetIds));
     await refreshAlbum();
   };
 
@@ -1768,6 +1857,21 @@
                   </Button>
                 {/if}
               </div>
+
+              <!-- third row: tools that work on the album as a whole rather than
+                   sorting or filtering it -->
+              {#if album.assetCount > 0}
+                <div class="flex place-items-center gap-1">
+                  <CircleIconButton
+                    title={showDuplicates ? $t('close') : $t('find_duplicates')}
+                    onclick={toggleDuplicates}
+                    icon={showDuplicates ? mdiClose : mdiContentDuplicate}
+                    color={showDuplicates ? 'primary' : undefined}
+                    size="20"
+                    padding="2"
+                  />
+                </div>
+              {/if}
             </div>
           {/snippet}
         </ControlAppBar>
@@ -1970,6 +2074,54 @@
             <AssetPageControls view={durationFilterView} />
           {/if}
         </section>
+      {:else if showDuplicates}
+        <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={duplicatesViewport.width}>
+          {#if duplicatesView.isLoading}
+            <div class="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+          {:else if duplicatesView.groups.length === 0}
+            <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('no_duplicates_found')}</p>
+          {:else}
+            <div class="flex flex-col gap-2 pb-3">
+              <p class="text-center text-sm text-gray-500 dark:text-gray-400">{$t('find_duplicates_hint')}</p>
+              <div class="flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  size="sm"
+                  disabled={isSelectingDuplicates}
+                  onclick={() => void selectDuplicates(duplicatesView.pageGroups)}
+                >
+                  {$t('select_duplicates_on_page')}
+                </Button>
+                <Button
+                  size="sm"
+                  color="gray"
+                  disabled={isSelectingDuplicates}
+                  onclick={() => void selectDuplicates(duplicatesView.groups)}
+                >
+                  {$t('select_duplicates_everywhere', { values: { count: duplicatesView.groups.length } })}
+                </Button>
+                {#if isSelectingDuplicates}
+                  <LoadingSpinner />
+                {/if}
+              </div>
+              {#if duplicateFlaggedCount > 0}
+                <p class="text-center text-sm text-amber-600 dark:text-amber-400">
+                  {$t('duplicates_flagged_hint', { values: { count: duplicateFlaggedCount } })}
+                </p>
+              {/if}
+            </div>
+
+            <GalleryViewer
+              assets={duplicatesView.pageAssets}
+              {assetInteraction}
+              viewport={duplicatesViewport}
+              videoAutoplayDelayMs={VIDEO_AUTOPLAY_DELAY_MS}
+              showAssetName
+            />
+            <AssetPageControls view={duplicatesView} />
+          {/if}
+        </section>
       {:else if showDateFrom}
         <section class="immich-scrollbar h-full overflow-y-auto pt-4" bind:clientWidth={dateFromViewport.width}>
           {#if dateFromValue !== null}
@@ -2060,7 +2212,8 @@
           showDurationFilter ||
           showTagFilter ||
           showFilenameIssues ||
-          showDateFrom}
+          showDateFrom ||
+          showDuplicates}
         class="h-full"
       >
         <AssetGrid

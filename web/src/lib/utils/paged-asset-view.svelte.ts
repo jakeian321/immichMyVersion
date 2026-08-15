@@ -3,6 +3,20 @@ import type { AssetResponseDto } from '@immich/sdk';
 export const ASSET_PAGE_SIZE = 50;
 
 /**
+ * What asset-page-controls needs from a pager. PagedAssetView and PagedDuplicateView
+ * both satisfy it, so the same Back/page-number/Next bar drives either.
+ */
+export interface PagedView {
+  page: number;
+  pageCount: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+  isScanning: boolean;
+  matched: unknown[];
+  goToPage(page: number): void;
+}
+
+/**
  * Paging for the album page's review views (sort by duration/date/name/likes, duration
  * range, tag filter).
  *
