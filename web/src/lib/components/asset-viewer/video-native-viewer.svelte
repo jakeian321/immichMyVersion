@@ -45,6 +45,7 @@
     mdiBookmarkOutline,
     mdiFilmstrip,
     mdiFilmstripBoxMultiple,
+    mdiViewComfy,
     mdiDeleteOutline,
   } from '@mdi/js';
 
@@ -116,6 +117,8 @@
 
   let showFramePreviewAll = $state(false);
   let wasPlayingBeforeFramePreviewAll = false;
+  // the same feed in its condensed layout; kept as its own flag so both can't open at once
+  let showFramePreviewStrip = $state(false);
   // upcoming videos in the view this asset was opened from, starting with the current
   // one; empty when the opener didn't provide a feed (e.g. virtualized timeline)
   let feedVideoAssets = $derived.by(() => {
@@ -664,6 +667,24 @@
 
   const closeFramePreviewAll = () => {
     showFramePreviewAll = false;
+
+    if (wasPlayingBeforeFramePreviewAll && videoPlayer) {
+      videoPlayer.play().catch((error) => handleError(error, $t('errors.unable_to_play_video')));
+    }
+  };
+
+  const openFramePreviewStrip = () => {
+    if (feedVideoAssets.length === 0) {
+      return;
+    }
+
+    wasPlayingBeforeFramePreviewAll = isPlaying;
+    videoPlayer?.pause();
+    showFramePreviewStrip = true;
+  };
+
+  const closeFramePreviewStrip = () => {
+    showFramePreviewStrip = false;
 
     if (wasPlayingBeforeFramePreviewAll && videoPlayer) {
       videoPlayer.play().catch((error) => handleError(error, $t('errors.unable_to_play_video')));
@@ -1242,6 +1263,20 @@
       </div>
     {/if}
 
+    <!-- Condensed Frame Preview All Button -->
+    {#if !isZoomed && feedVideoAssets.length > 0}
+      <div class="z-[1001] fixed left-24 top-[12%]">
+        <button
+          type="button"
+          class="bg-black bg-opacity-40 text-white rounded-full p-2 hover:bg-opacity-60 transition-all"
+          title={$t('frame_preview_strip')}
+          onclick={openFramePreviewStrip}
+        >
+          <Icon path={mdiViewComfy} size="1.1rem" />
+        </button>
+      </div>
+    {/if}
+
     <!-- View Tags Button (V) -->
     {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && tags.length > 0}
       <div class="z-[1001] fixed left-12 top-[12%]">
@@ -1550,6 +1585,19 @@
           currentAssetId={assetId}
           onJumpTo={jumpFromFramePreviewAll}
           onClose={closeFramePreviewAll}
+        />
+      </Portal>
+    {/if}
+
+    <!-- Condensed Frame Preview All Overlay -->
+    {#if showFramePreviewStrip}
+      <Portal>
+        <FramePreviewAll
+          assets={feedVideoAssets}
+          currentAssetId={assetId}
+          layout="filmstrip"
+          onJumpTo={jumpFromFramePreviewAll}
+          onClose={closeFramePreviewStrip}
         />
       </Portal>
     {/if}

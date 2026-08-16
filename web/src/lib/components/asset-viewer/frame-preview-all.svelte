@@ -19,11 +19,20 @@
     /** video assets to show, in feed order; the first one is the currently viewed asset */
     assets: AssetResponseDto[];
     currentAssetId: string;
+    /**
+     * 'feed' gives each frame half the width at its natural aspect - the most detail, at
+     * eleven rows per video. 'filmstrip' packs the same frames into three tight rows so a
+     * video can be judged without scrolling through it. Everything else - capture,
+     * lookahead, review tagging, scroll-past fallback - is identical.
+     */
+    layout?: 'feed' | 'filmstrip';
     onJumpTo: (time: number) => void;
     onClose: () => void;
   }
 
-  let { assets, currentAssetId, onJumpTo, onClose }: Props = $props();
+  let { assets, currentAssetId, layout = 'feed', onJumpTo, onClose }: Props = $props();
+
+  let isFilmstrip = $derived(layout === 'filmstrip');
 
   const FRAME_COUNT = 21;
   // capping capture size keeps dozens of sections from exhausting memory the way
@@ -459,7 +468,7 @@
 <div class="fixed inset-0 z-[9999] flex flex-col bg-black bg-opacity-95 p-2">
   <div class="flex items-center justify-between px-1">
     <h2 class="text-lg text-white">
-      {$t('frame_preview_all')}
+      {isFilmstrip ? $t('frame_preview_strip') : $t('frame_preview_all')}
       <span class="ml-2 text-sm text-gray-400">{visibleSections.length}/{assets.length}</span>
     </h2>
     <button type="button" class="text-white p-2" title={$t('close')} onclick={onClose}>
@@ -469,7 +478,7 @@
 
   <div class="flex-1 overflow-y-auto overscroll-contain" bind:this={scrollContainer}>
     {#each visibleSections as section (section.asset.id)}
-      <section class="mb-6" use:trackScrollPast={section}>
+      <section class={isFilmstrip ? 'mb-3' : 'mb-6'} use:trackScrollPast={section}>
         <div class="sticky top-0 z-10 flex items-center justify-between bg-black bg-opacity-80 px-1 py-1">
           <div class="min-w-0">
             <p
@@ -493,7 +502,9 @@
         {#if section.status === 'error'}
           <p class="px-1 py-3 text-sm text-red-400">{$t('error')}</p>
         {:else}
-          <div class="grid grid-cols-2 items-start gap-1.5 sm:gap-2">
+          <div
+            class={['grid items-start', isFilmstrip ? 'grid-cols-7 gap-0.5 sm:gap-1' : 'grid-cols-2 gap-1.5 sm:gap-2']}
+          >
             {#each section.frames as frame (frame.time)}
               <button
                 type="button"
@@ -502,7 +513,16 @@
               >
                 <!-- natural aspect ratio, so the whole frame is visible instead of a crop -->
                 <img src={frame.url} alt={formatTime(frame.time)} class="w-full" />
-                <span class="absolute bottom-1 right-1 rounded-sm bg-black bg-opacity-60 px-1.5 text-xs text-white">
+                <span
+                  class={[
+                    'absolute rounded-sm bg-black bg-opacity-60 text-white',
+                    // no shared positioning: two competing bottom/right utilities are
+                    // resolved by stylesheet order, not by the order written here
+                    isFilmstrip
+                      ? 'bottom-0.5 right-0.5 px-0.5 text-[9px] leading-tight'
+                      : 'bottom-1 right-1 px-1.5 text-xs',
+                  ]}
+                >
                   {formatTime(frame.time)}
                 </span>
               </button>
