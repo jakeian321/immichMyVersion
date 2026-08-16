@@ -21,9 +21,10 @@
     currentAssetId: string;
     /**
      * 'feed' gives each frame half the width at its natural aspect - the most detail, at
-     * eleven rows per video. 'filmstrip' packs the same frames into three tight rows so a
-     * video can be judged without scrolling through it. Everything else - capture,
-     * lookahead, review tagging, scroll-past fallback - is identical.
+     * eleven rows per video. 'filmstrip' puts four to a row instead, so the same frames
+     * take six rows rather than eleven and a video can be judged in a scroll or two while
+     * each frame stays big enough to read. Everything else - capture, lookahead, review
+     * tagging, scroll-past fallback - is identical.
      */
     layout?: 'feed' | 'filmstrip';
     onJumpTo: (time: number) => void;
@@ -503,7 +504,7 @@
           <p class="px-1 py-3 text-sm text-red-400">{$t('error')}</p>
         {:else}
           <div
-            class={['grid items-start', isFilmstrip ? 'grid-cols-7 gap-0.5 sm:gap-1' : 'grid-cols-2 gap-1.5 sm:gap-2']}
+            class={['grid items-start', isFilmstrip ? 'grid-cols-4 gap-1 sm:gap-1.5' : 'grid-cols-2 gap-1.5 sm:gap-2']}
           >
             {#each section.frames as frame (frame.time)}
               <button
@@ -518,9 +519,7 @@
                     'absolute rounded-sm bg-black bg-opacity-60 text-white',
                     // no shared positioning: two competing bottom/right utilities are
                     // resolved by stylesheet order, not by the order written here
-                    isFilmstrip
-                      ? 'bottom-0.5 right-0.5 px-0.5 text-[9px] leading-tight'
-                      : 'bottom-1 right-1 px-1.5 text-xs',
+                    isFilmstrip ? 'bottom-1 right-1 px-1 text-[11px]' : 'bottom-1 right-1 px-1.5 text-xs',
                   ]}
                 >
                   {formatTime(frame.time)}
