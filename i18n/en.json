@@ -1171,6 +1171,7 @@
   "role": "Role",
   "role_editor": "Editor",
   "role_viewer": "Viewer",
+  "rotate_playback_to_fill": "Rotate video playback to fill a sideways screen",
   "save": "Save",
   "saved_api_key": "Saved API Key",
   "saved_profile": "Saved profile",

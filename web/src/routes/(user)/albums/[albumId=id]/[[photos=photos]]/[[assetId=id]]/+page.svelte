@@ -91,6 +91,7 @@
     mdiImageOutline,
     mdiImagePlusOutline,
     mdiLink,
+    mdiPhoneRotateLandscape,
     mdiPlus,
     mdiSortAlphabeticalAscending,
     mdiSortAlphabeticalDescending,
@@ -106,6 +107,7 @@
     mdiTimerOutline,
   } from '@mdi/js';
   import { Input } from '@immich/ui';
+  import { isVideoRotateMode } from '$lib/stores/video-rotation.svelte';
   import {
     filenameAgeAnchor,
     parseAgeAnchor,
@@ -953,6 +955,12 @@
     }
   };
 
+  // Arms quarter-turn playback rather than opening a view of its own, so it stays on
+  // while videos are opened one after another instead of ending with the first one.
+  const toggleVideoRotateMode = () => {
+    isVideoRotateMode.value = !isVideoRotateMode.value;
+  };
+
   // Only the assets already in a duplicate group need their tags read - a small slice of
   // the album - because tags decide nothing except which copy of a group survives.
   const selectDuplicates = async (groups: DuplicateGroup[]) => {
@@ -1415,6 +1423,9 @@
   onDestroy(() => {
     assetStore.destroy();
     filenameAgeAnchor.set(null);
+    // the toggle only exists on this page, so leaving with it still armed would rotate
+    // videos elsewhere with no way to turn it back off
+    isVideoRotateMode.value = false;
   });
 
   // publish this album's age-number anchor (if configured) so thumbnails show badges
@@ -1867,6 +1878,14 @@
                     onclick={toggleDuplicates}
                     icon={showDuplicates ? mdiClose : mdiContentDuplicate}
                     color={showDuplicates ? 'primary' : undefined}
+                    size="20"
+                    padding="2"
+                  />
+                  <CircleIconButton
+                    title={$t('rotate_playback_to_fill')}
+                    onclick={toggleVideoRotateMode}
+                    icon={mdiPhoneRotateLandscape}
+                    color={isVideoRotateMode.value ? 'primary' : undefined}
                     size="20"
                     padding="2"
                   />

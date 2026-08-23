@@ -17,6 +17,7 @@
   import { t } from 'svelte-i18n';
   import { filenameAgeAnchor, getAgeForFilename } from '$lib/stores/filename-age.store';
   import { isFaceEditMode } from '$lib/stores/face-edit.svelte';
+  import { isVideoRotateMode } from '$lib/stores/video-rotation.svelte';
   import FaceEditor from '$lib/components/asset-viewer/face-editor/face-editor.svelte';
 
   // Import for tag components
@@ -1114,6 +1115,30 @@
   let containerWidth = $state(0);
   let containerHeight = $state(0);
 
+  let isRotated = $derived(isVideoRotateMode.value);
+
+  /**
+   * Lays the video out against the screen's swapped dimensions before turning it a
+   * quarter turn, so object-fit sizes it for the orientation it will actually be seen in.
+   * Rotating alone would leave it fitted to the upright screen and merely tip that same
+   * pillarboxed strip onto its side; swapping first is what fills the panel.
+   *
+   * The element sits at the container's centre and is pulled back by half its own laid-out
+   * size, which keeps the default centre transform-origin on the screen's centre. The zoom
+   * and pan transforms stay outside the rotation so dragging still follows the screen's
+   * axes rather than the video's.
+   */
+  const getRotatedStyle = () => {
+    if (!isRotated) {
+      return `transform: ${getTransformStyle()}`;
+    }
+    return [
+      `width: ${containerHeight}px`,
+      `height: ${containerWidth}px`,
+      `transform: translate(-50%, -50%) ${getTransformStyle()} rotate(90deg)`,
+    ].join('; ');
+  };
+
   $effect(() => {
     if (isFaceEditMode.value) {
       videoPlayer?.pause();
@@ -1145,10 +1170,14 @@
       autoplay
       playsinline
       webkit-playsinline="true"
-      class="h-full w-full {$videoZoomedOut
-        ? 'object-contain'
-        : 'object-cover'} max-h-screen transition-transform duration-100"
-      style={`transform: ${getTransformStyle()}`}
+      class={[
+        $videoZoomedOut ? 'object-contain' : 'object-cover',
+        'transition-transform duration-100',
+        // the two branches share no sizing or positioning utilities: Tailwind settles
+        // conflicts by stylesheet order, not by the order they are written here
+        isRotated ? 'absolute left-1/2 top-1/2' : 'h-full w-full max-h-screen',
+      ]}
+      style={getRotatedStyle()}
       use:swipe={() => ({})}
       onswipe={onSwipe}
       ontimeupdate={updateProgress}
