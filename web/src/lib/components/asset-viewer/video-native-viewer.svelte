@@ -17,7 +17,7 @@
   import { t } from 'svelte-i18n';
   import { filenameAgeAnchor, getAgeForFilename } from '$lib/stores/filename-age.store';
   import { isFaceEditMode } from '$lib/stores/face-edit.svelte';
-  import { isVideoRotateMode } from '$lib/stores/video-rotation.svelte';
+  import { shouldRotateVideo } from '$lib/stores/video-rotation.svelte';
   import FaceEditor from '$lib/components/asset-viewer/face-editor/face-editor.svelte';
 
   // Import for tag components
@@ -31,6 +31,8 @@
   import { upsertTagByValue } from '$lib/utils/tag-utils';
   import { AssetTypeEnum, deleteAssets, getAssetInfo, type AssetResponseDto, getAllTags } from '@immich/sdk';
   import {
+    mdiChevronLeft,
+    mdiChevronRight,
     mdiClose,
     mdiPlus,
     mdiTag,
@@ -1121,11 +1123,12 @@
   let windowWidth = $state(0);
   let windowHeight = $state(0);
 
-  // Only a landscape viewport has anything to gain from the turn. A portrait one already
-  // suits a portrait video, and turning it there would crop the video to a ribbon to
-  // cover a screen it already filled - so the mode waits instead, and takes effect as
-  // soon as the screen it is meant for shows up.
-  let isRotated = $derived(isVideoRotateMode.value && windowWidth > windowHeight);
+  let isRotated = $derived(shouldRotateVideo(windowWidth, windowHeight));
+
+  // Turning the video is for watching it, not working on it, so the mode strips the
+  // viewer back to the picture: the tagging, preview and playback controls layered over
+  // the video all go, leaving only the step-through buttons below.
+  let showOverlays = $derived(!isZoomed && !isRotated);
 
   /**
    * Lays the video out against the screen's swapped dimensions before turning it a
@@ -1138,6 +1141,9 @@
    * The zoom and pan transforms stay outside the rotation so dragging still follows the
    * screen's axes rather than the video's.
    */
+  const getRotatedFrameStyle = () =>
+    `width: ${windowHeight}px; height: ${windowWidth}px; transform: translate(-50%, -50%) rotate(90deg)`;
+
   const getRotatedStyle = () => {
     if (!isRotated) {
       return `transform: ${getTransformStyle()}`;
@@ -1241,8 +1247,45 @@
       <FaceEditor htmlElement={videoPlayer} {containerWidth} {containerHeight} {assetId} />
     {/if}
 
+    <!-- Step-through controls, the only thing left over the video once it is turned.
+         They sit in a frame carrying the video's own rotation, so "top left" means the
+         top left of the picture as watched, whichever way the monitor was pivoted, and
+         the arrows read the right way up there instead of lying on their side. -->
+    {#if isRotated}
+      <div class="pointer-events-none fixed left-1/2 top-1/2 z-[1002]" style={getRotatedFrameStyle()}>
+        <div class="pointer-events-auto absolute left-4 top-4 flex gap-3">
+          <button
+            type="button"
+            class="rounded-full bg-black bg-opacity-40 p-2 text-white transition-all hover:bg-opacity-60"
+            title={$t('previous')}
+            onclick={onPreviousAsset}
+          >
+            <Icon path={mdiChevronLeft} size="1.5rem" />
+          </button>
+          <button
+            type="button"
+            class="rounded-full bg-black bg-opacity-40 p-2 text-white transition-all hover:bg-opacity-60"
+            title={$t('next')}
+            onclick={onNextAsset}
+          >
+            <Icon path={mdiChevronRight} size="1.5rem" />
+          </button>
+          <!-- the way out: hiding the viewer's own bar takes the close button with it,
+               and a phone has no Escape key to fall back on -->
+          <button
+            type="button"
+            class="rounded-full bg-black bg-opacity-40 p-2 text-white transition-all hover:bg-opacity-60"
+            title={$t('close')}
+            onclick={onClose}
+          >
+            <Icon path={mdiClose} size="1.5rem" />
+          </button>
+        </div>
+      </div>
+    {/if}
+
     <!-- Age Number Badge -->
-    {#if !isZoomed && ageNumber !== null}
+    {#if showOverlays && ageNumber !== null}
       <div class="z-[1001] fixed right-2 top-[8%]">
         <span class="rounded-full bg-black bg-opacity-40 px-3 py-2 text-sm font-bold text-white">
           {ageNumber}
@@ -1251,7 +1294,7 @@
     {/if}
 
     <!-- Quick Tag Preset Button -->
-    {#if !isZoomed && isOwner && asset?.id && !isSharedLink()}
+    {#if showOverlays && isOwner && asset?.id && !isSharedLink()}
       <div class="z-[1001] fixed left-0 top-[8%]">
         <button
           class={`text-white rounded-full px-3 py-2 transition-all ${
@@ -1270,7 +1313,7 @@
     {/if}
 
     <!-- Auto-skip Button -->
-    {#if !isZoomed}
+    {#if showOverlays}
       <div class="z-[1001] fixed left-12 top-[8%]">
         <button
           class={`bg-black bg-opacity-40 text-white rounded-full p-2 transition-all ${isAutoSkip ? 'bg-immich-primary bg-opacity-60' : ''}`}
@@ -1282,7 +1325,7 @@
     {/if}
 
     <!-- Frame Preview Button -->
-    {#if !isZoomed}
+    {#if showOverlays}
       <div class="z-[1001] fixed left-12 top-[16%]">
         <button
           type="button"
@@ -1296,7 +1339,7 @@
     {/if}
 
     <!-- Frame Preview All Button -->
-    {#if !isZoomed && feedVideoAssets.length > 0}
+    {#if showOverlays && feedVideoAssets.length > 0}
       <div class="z-[1001] fixed left-24 top-[16%]">
         <button
           type="button"
@@ -1310,7 +1353,7 @@
     {/if}
 
     <!-- Condensed Frame Preview All Button -->
-    {#if !isZoomed && feedVideoAssets.length > 0}
+    {#if showOverlays && feedVideoAssets.length > 0}
       <div class="z-[1001] fixed left-24 top-[12%]">
         <button
           type="button"
@@ -1324,7 +1367,7 @@
     {/if}
 
     <!-- View Tags Button (V) -->
-    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && tags.length > 0}
+    {#if isOwner && asset?.id && !isSharedLink() && showOverlays && tags.length > 0}
       <div class="z-[1001] fixed left-12 top-[12%]">
         <button
           type="button"
@@ -1338,7 +1381,7 @@
     {/if}
 
     <!-- Zoom Reset Button -->
-    {#if isZoomed && showZoomControls}
+    {#if isZoomed && showZoomControls && !isRotated}
       <div class="z-[1001] fixed right-4 bottom-4" transition:fade={{ duration: 150 }}>
         <button
           type="button"
@@ -1359,7 +1402,7 @@
     {/if}
 
     <!-- Eye Icon (now uses tag functionality) - Toggle Tag Elements -->
-    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+    {#if isOwner && asset?.id && !isSharedLink() && showOverlays}
       <div class="z-[1001] fixed left-0 top-[12%]">
         <button
           type="button"
@@ -1373,7 +1416,7 @@
     {/if}
 
     <!-- Add Tag Button -->
-    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+    {#if isOwner && asset?.id && !isSharedLink() && showOverlays}
       <div class="z-[1001] fixed left-0 top-[16%]">
         <button
           type="button"
@@ -1387,7 +1430,7 @@
     {/if}
 
     <!-- Horizontal Progress Bars (increased width and gap) -->
-    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+    {#if isOwner && asset?.id && !isSharedLink() && showOverlays}
       {@const numBars = Math.ceil(duration / 8)}
       {@const barWidth = '2.5in'}
 
@@ -1419,7 +1462,7 @@
     {/if}
 
     <!-- Preset Tag Buttons (anchored below the eye icon / add-tag / progress bars / tags panel) -->
-    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed && showTagElements}
+    {#if isOwner && asset?.id && !isSharedLink() && showOverlays && showTagElements}
       <div class="z-[1001] fixed left-2 top-[22%]">
         <div class="flex flex-col gap-1.5">
           {#each getVisiblePresetTags() as presetTag (presetTag.id)}
@@ -1472,7 +1515,7 @@
     {/if}
 
     <!-- View Tags Panel -->
-    {#if isOwner && asset?.id && !isSharedLink() && !isZoomed}
+    {#if isOwner && asset?.id && !isSharedLink() && showOverlays}
       <div class="z-[1001] fixed left-0 top-[22%]">
         <div class="flex flex-col">
           {#if showTagsPanel && tags.length > 0}
@@ -1507,7 +1550,7 @@
     {/if}
 
     <!-- Video Zoom In/Out Toggle Button -->
-    {#if !isZoomed}
+    {#if showOverlays}
       <div class="z-[1001] fixed right-2 bottom-2">
         <button
           type="button"

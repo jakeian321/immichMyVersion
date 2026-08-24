@@ -10,3 +10,13 @@
  * the file, but without touching the original.
  */
 export const isVideoRotateMode = $state({ value: false });
+
+/**
+ * Whether the mode should actually take effect on the screen in front of it. A portrait
+ * viewport already suits a portrait video, and turning it there would crop the video to a
+ * ribbon to cover a screen it was already filling - so an armed mode waits, and engages
+ * the moment a landscape screen shows up. Shared rather than duplicated because the
+ * viewer hides its own chrome on the same condition.
+ */
+export const shouldRotateVideo = (viewportWidth: number, viewportHeight: number): boolean =>
+  isVideoRotateMode.value && viewportWidth > viewportHeight;

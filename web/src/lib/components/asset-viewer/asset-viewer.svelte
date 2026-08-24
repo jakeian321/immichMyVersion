@@ -8,6 +8,10 @@
   import { updateNumberOfComments } from '$lib/stores/activity.store';
   import { closeEditorCofirm } from '$lib/stores/asset-editor.store';
   import { assetViewingStore } from '$lib/stores/asset-viewing.store';
+  import { shouldRotateVideo } from '$lib/stores/video-rotation.svelte';
+
+  let viewportWidth = $state(0);
+  let viewportHeight = $state(0);
   import { isShowDetail } from '$lib/stores/preferences.store';
   import { SlideshowNavigation, SlideshowState, slideshowStore } from '$lib/stores/slideshow.store';
   import { user } from '$lib/stores/user.store';
@@ -470,6 +474,8 @@
   });
 </script>
 
+<svelte:window bind:innerWidth={viewportWidth} bind:innerHeight={viewportHeight} />
+
 <svelte:document bind:fullscreenElement />
 
 <section
@@ -477,8 +483,9 @@
   class="fixed left-0 top-0 z-[1001] grid size-full grid-cols-4 grid-rows-[64px_1fr] overflow-hidden bg-black"
   use:focusTrap
 >
-  <!-- Top navigation bar -->
-  {#if $slideshowState === SlideshowState.None && !isShowEditor}
+  <!-- Top navigation bar; hidden while playback is turned, where it would lie across
+       the picture the mode exists to give the whole panel to -->
+  {#if $slideshowState === SlideshowState.None && !isShowEditor && !shouldRotateVideo(viewportWidth, viewportHeight)}
     <div class="z-[1002] col-span-4 col-start-1 row-span-1 row-start-1 transition-transform">
       <AssetViewerNavBar
         {asset}
