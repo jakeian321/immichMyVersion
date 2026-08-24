@@ -1,5 +1,7 @@
 <script lang="ts" module>
   export type TagFilterMode = 'all' | 'any';
+  /** seconds, inclusive at both ends; an open end is 0 or Infinity */
+  export type DurationRange = { min: number; max: number };
 </script>
 
 <script lang="ts">
@@ -21,7 +23,10 @@
     /** the option list is still being worked out, so show progress instead of "no tags" */
     isLoading?: boolean;
     loadingLabel?: string;
-    onApply: (tagIds: string[], mode: TagFilterMode, tagCount: number | null) => void;
+    /** shows the duration bounds; off for callers that filter on tags alone */
+    showDuration?: boolean;
+    initialDuration?: DurationRange | null;
+    onApply: (tagIds: string[], mode: TagFilterMode, tagCount: number | null, duration: DurationRange | null) => void;
     onClose: () => void;
   }
 
@@ -33,6 +38,8 @@
     initialTagCount = null,
     isLoading = false,
     loadingLabel = '',
+    showDuration = false,
+    initialDuration = null,
     onApply,
     onClose,
   }: Props = $props();
@@ -40,6 +47,10 @@
   let selectedIds = new SvelteSet<string>(initialSelectedIds);
   let mode = $state<TagFilterMode>(initialMode);
   let tagCountInput = $state(initialTagCount === null ? '' : String(initialTagCount));
+  let minDurationInput = $state(initialDuration && initialDuration.min > 0 ? String(initialDuration.min) : '');
+  let maxDurationInput = $state(
+    initialDuration && Number.isFinite(initialDuration.max) ? String(initialDuration.max) : '',
+  );
   // the options can arrive after the modal opens, so this has to track them
   let sortedOptions = $derived([...tagOptions].sort((a, b) => a.value.localeCompare(b.value)));
 
@@ -51,10 +62,25 @@
     }
   };
 
+  // an empty box means "no bound this side" rather than zero, so each end falls back to
+  // the widest value it could have had
+  const readSeconds = (input: string, fallback: number) => {
+    const parsed = Number(input.trim());
+    return input.trim() === '' || Number.isNaN(parsed) || parsed < 0 ? fallback : parsed;
+  };
+
   const handleApply = () => {
     const parsed = Number.parseInt(tagCountInput, 10);
     const tagCount = Number.isNaN(parsed) || parsed < 1 ? null : parsed;
-    onApply([...selectedIds], mode, tagCount);
+
+    const min = readSeconds(minDurationInput, 0);
+    const max = readSeconds(maxDurationInput, Number.POSITIVE_INFINITY);
+    // both ends open is the same as not filtering, and a backwards range would match
+    // nothing at all, which reads as a broken filter rather than an empty one
+    const duration =
+      !showDuration || (min === 0 && max === Number.POSITIVE_INFINITY) || max < min ? null : { min, max };
+
+    onApply([...selectedIds], mode, tagCount, duration);
   };
 </script>
 
@@ -96,6 +122,30 @@
       </label>
     </div>
     <p class="text-xs text-gray-500 dark:text-gray-400">{$t('total_tag_count_hint')}</p>
+  {/if}
+
+  {#if showDuration}
+    <div class="my-3 flex flex-wrap items-center gap-3">
+      <label class="flex items-center gap-2 text-sm">
+        {$t('duration_seconds')}
+        <input
+          class="w-20 rounded-lg border border-gray-300 bg-transparent px-2 py-1 text-center text-sm dark:border-gray-600 dark:text-immich-dark-fg"
+          type="text"
+          inputmode="numeric"
+          placeholder={$t('duration_from')}
+          bind:value={minDurationInput}
+        />
+        <span class="text-gray-500 dark:text-gray-400">-</span>
+        <input
+          class="w-20 rounded-lg border border-gray-300 bg-transparent px-2 py-1 text-center text-sm dark:border-gray-600 dark:text-immich-dark-fg"
+          type="text"
+          inputmode="numeric"
+          placeholder={$t('duration_to')}
+          bind:value={maxDurationInput}
+        />
+      </label>
+    </div>
+    <p class="text-xs text-gray-500 dark:text-gray-400">{$t('duration_seconds_hint')}</p>
   {/if}
 
   {#if isLoading}

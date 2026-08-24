@@ -1,6 +1,9 @@
 <script lang="ts">
   import AssetPageControls from '$lib/components/album-page/asset-page-controls.svelte';
-  import TagFilterModal from '$lib/components/album-page/tag-filter-modal.svelte';
+  import TagFilterModal, {
+    type DurationRange,
+    type TagFilterMode,
+  } from '$lib/components/album-page/tag-filter-modal.svelte';
   import Button from '$lib/components/elements/buttons/button.svelte';
   import CircleIconButton from '$lib/components/elements/buttons/circle-icon-button.svelte';
   import UserPageLayout from '$lib/components/layouts/user-page-layout.svelte';
@@ -11,7 +14,7 @@
   import { clearVideoRotateMode, isVideoRotateMode, toggleVideoRotateMode } from '$lib/stores/video-rotation.svelte';
   import { handleError } from '$lib/utils/handle-error';
   import { ASSET_PAGE_SIZE, PagedAssetView } from '$lib/utils/paged-asset-view.svelte';
-  import { searchAssets, type AssetResponseDto } from '@immich/sdk';
+  import { searchAssetsByTagFilter } from '$lib/utils/tag-media-search';
   import { mdiPhoneRotateLandscape } from '@mdi/js';
   import { onDestroy } from 'svelte';
   import { t } from 'svelte-i18n';
@@ -23,11 +26,11 @@
 
   let { data }: Props = $props();
 
-  // the search API pages server-side, so ask for whole pages of the size the pager uses
-  const SEARCH_PAGE_SIZE = 250;
-
   let isPickerOpen = $state(false);
   let selectedTagIds: string[] = $state([]);
+  let tagMode = $state<TagFilterMode>('all');
+  let tagCount = $state<number | null>(null);
+  let durationRange = $state<DurationRange | null>(null);
   let isLoading = $state(false);
 
   const view = new PagedAssetView();
@@ -39,9 +42,17 @@
   let tagOptions = $derived(data.tags.map((tag) => ({ id: tag.id, value: tag.value })));
   let selectedTagNames = $derived(tagOptions.filter((tag) => selectedTagIds.includes(tag.id)).map((tag) => tag.value));
 
-  const handleApply = async (tagIds: string[]) => {
+  const handleApply = async (
+    tagIds: string[],
+    mode: TagFilterMode,
+    totalTags: number | null,
+    duration: DurationRange | null,
+  ) => {
     isPickerOpen = false;
     selectedTagIds = tagIds;
+    tagMode = mode;
+    tagCount = totalTags;
+    durationRange = duration;
 
     if (tagIds.length === 0) {
       view.reset();
@@ -52,19 +63,7 @@
     view.reset();
 
     try {
-      // the server filters by tag for us, so this only walks result pages rather than
-      // checking every asset the way the album page has to
-      const found: AssetResponseDto[] = [];
-      for (let page = 1; ; page++) {
-        const { assets } = await searchAssets({
-          metadataSearchDto: { tagIds, page, size: SEARCH_PAGE_SIZE },
-        });
-        found.push(...assets.items);
-        if (assets.nextPage === null || assets.items.length === 0) {
-          break;
-        }
-      }
-      view.setAll(found);
+      view.setAll(await searchAssetsByTagFilter({ tagIds, mode, tagCount: totalTags, duration }));
     } catch (error) {
       handleError(error, $t('errors.unable_to_load_assets'));
       view.reset();
@@ -72,6 +71,22 @@
       isLoading = false;
     }
   };
+
+  // reads back the filter as a sentence, so what is on screen is never a mystery
+  let filterSummary = $derived.by(() => {
+    const parts: string[] = [];
+    if (selectedTagNames.length > 0) {
+      parts.push(selectedTagNames.join(tagMode === 'all' ? ' + ' : ' / '));
+    }
+    if (tagCount !== null) {
+      parts.push($t('total_tag_count') + ': ' + tagCount);
+    }
+    if (durationRange !== null) {
+      const max = Number.isFinite(durationRange.max) ? durationRange.max + 's' : '∞';
+      parts.push($t('duration') + ': ' + durationRange.min + 's - ' + max);
+    }
+    return parts.join('  ·  ');
+  });
 
   onDestroy(clearVideoRotateMode);
 </script>
@@ -94,8 +109,8 @@
   {/snippet}
 
   <section class="immich-scrollbar h-full overflow-y-auto" bind:clientWidth={viewport.width}>
-    {#if selectedTagNames.length > 0}
-      <p class="pb-2 text-sm text-gray-500 dark:text-gray-400">{selectedTagNames.join(', ')}</p>
+    {#if filterSummary}
+      <p class="pb-2 text-sm text-gray-500 dark:text-gray-400">{filterSummary}</p>
     {/if}
 
     {#if isLoading}
@@ -122,6 +137,11 @@
   <TagFilterModal
     {tagOptions}
     initialSelectedIds={selectedTagIds}
+    showAdvanced
+    showDuration
+    initialMode={tagMode}
+    initialTagCount={tagCount}
+    initialDuration={durationRange}
     onApply={handleApply}
     onClose={() => (isPickerOpen = false)}
   />
