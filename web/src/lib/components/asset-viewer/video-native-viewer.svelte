@@ -1117,24 +1117,30 @@
 
   let isRotated = $derived(isVideoRotateMode.value);
 
+  // the window rather than the container the video normally sits in: covering the panel
+  // means covering the viewer's 64px top bar too, since a quarter-turned video can only
+  // fill an area whose shape is the inverse of its own, and the bar spoils that shape
+  let windowWidth = $state(0);
+  let windowHeight = $state(0);
+
   /**
    * Lays the video out against the screen's swapped dimensions before turning it a
    * quarter turn, so object-fit sizes it for the orientation it will actually be seen in.
    * Rotating alone would leave it fitted to the upright screen and merely tip that same
    * pillarboxed strip onto its side; swapping first is what fills the panel.
    *
-   * The element sits at the container's centre and is pulled back by half its own laid-out
-   * size, which keeps the default centre transform-origin on the screen's centre. The zoom
-   * and pan transforms stay outside the rotation so dragging still follows the screen's
-   * axes rather than the video's.
+   * The element is pinned to the middle of the viewport and pulled back by half its own
+   * laid-out size, which puts the default centre transform-origin on the screen's centre.
+   * The zoom and pan transforms stay outside the rotation so dragging still follows the
+   * screen's axes rather than the video's.
    */
   const getRotatedStyle = () => {
     if (!isRotated) {
       return `transform: ${getTransformStyle()}`;
     }
     return [
-      `width: ${containerHeight}px`,
-      `height: ${containerWidth}px`,
+      `width: ${windowHeight}px`,
+      `height: ${windowWidth}px`,
       `transform: translate(-50%, -50%) ${getTransformStyle()} rotate(90deg)`,
     ].join('; ');
   };
@@ -1152,6 +1158,8 @@
     }
   });
 </script>
+
+<svelte:window bind:innerWidth={windowWidth} bind:innerHeight={windowHeight} />
 
 <div transition:fade={{ duration: 150 }} class="flex flex-col h-full select-none">
   <div
@@ -1171,11 +1179,16 @@
       playsinline
       webkit-playsinline="true"
       class={[
-        $videoZoomedOut ? 'object-contain' : 'object-cover',
         'transition-transform duration-100',
-        // the two branches share no sizing or positioning utilities: Tailwind settles
-        // conflicts by stylesheet order, not by the order they are written here
-        isRotated ? 'absolute left-1/2 top-1/2' : 'h-full w-full max-h-screen',
+        // the two branches share no sizing, fit or positioning utilities: Tailwind
+        // settles conflicts by stylesheet order, not by the order written here
+        isRotated
+          ? // fixed, so the turned video covers the whole viewport instead of the cell
+            // the viewer's grid leaves for it; cover rather than contain because the
+            // point of the mode is a full panel, and a screen that isn't exactly the
+            // video's inverse shape would otherwise letterbox what it just enlarged
+            'fixed left-1/2 top-1/2 object-cover'
+          : `h-full w-full max-h-screen ${$videoZoomedOut ? 'object-contain' : 'object-cover'}`,
       ]}
       style={getRotatedStyle()}
       use:swipe={() => ({})}

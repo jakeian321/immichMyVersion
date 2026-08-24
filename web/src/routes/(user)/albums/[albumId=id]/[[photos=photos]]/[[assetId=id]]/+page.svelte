@@ -957,8 +957,24 @@
 
   // Arms quarter-turn playback rather than opening a view of its own, so it stays on
   // while videos are opened one after another instead of ending with the first one.
-  const toggleVideoRotateMode = () => {
+  //
+  // Fullscreen goes with it because a turned video can only cover the panel when the
+  // viewport is the same shape as the panel, and browser chrome makes it shorter than
+  // that. The request rides on this click: browsers only grant it from a real gesture,
+  // which the later click that opens a video is too far removed from.
+  const toggleVideoRotateMode = async () => {
     isVideoRotateMode.value = !isVideoRotateMode.value;
+
+    try {
+      if (isVideoRotateMode.value) {
+        await document.documentElement.requestFullscreen();
+      } else if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      }
+    } catch {
+      // fullscreen is an improvement, not a requirement - a refused request still
+      // leaves the rotation working, just against a shorter viewport
+    }
   };
 
   // Only the assets already in a duplicate group need their tags read - a small slice of
@@ -1425,7 +1441,10 @@
     filenameAgeAnchor.set(null);
     // the toggle only exists on this page, so leaving with it still armed would rotate
     // videos elsewhere with no way to turn it back off
-    isVideoRotateMode.value = false;
+    if (isVideoRotateMode.value) {
+      isVideoRotateMode.value = false;
+      void document.exitFullscreen().catch(() => {});
+    }
   });
 
   // publish this album's age-number anchor (if configured) so thumbnails show badges
