@@ -1115,13 +1115,17 @@
   let containerWidth = $state(0);
   let containerHeight = $state(0);
 
-  let isRotated = $derived(isVideoRotateMode.value);
-
   // the window rather than the container the video normally sits in: covering the panel
   // means covering the viewer's 64px top bar too, since a quarter-turned video can only
   // fill an area whose shape is the inverse of its own, and the bar spoils that shape
   let windowWidth = $state(0);
   let windowHeight = $state(0);
+
+  // Only a landscape viewport has anything to gain from the turn. A portrait one already
+  // suits a portrait video, and turning it there would crop the video to a ribbon to
+  // cover a screen it already filled - so the mode waits instead, and takes effect as
+  // soon as the screen it is meant for shows up.
+  let isRotated = $derived(isVideoRotateMode.value && windowWidth > windowHeight);
 
   /**
    * Lays the video out against the screen's swapped dimensions before turning it a
