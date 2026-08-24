@@ -107,7 +107,7 @@
     mdiTimerOutline,
   } from '@mdi/js';
   import { Input } from '@immich/ui';
-  import { isVideoRotateMode } from '$lib/stores/video-rotation.svelte';
+  import { isVideoRotateMode, videoRotateLock } from '$lib/stores/video-rotation.svelte';
   import {
     filenameAgeAnchor,
     parseAgeAnchor,
@@ -964,6 +964,8 @@
   // which the later click that opens a video is too far removed from.
   const toggleVideoRotateMode = async () => {
     isVideoRotateMode.value = !isVideoRotateMode.value;
+    // a held angle belongs to the run it was set during, not to the next one
+    videoRotateLock.value = null;
 
     try {
       if (isVideoRotateMode.value) {
@@ -1443,6 +1445,7 @@
     // videos elsewhere with no way to turn it back off
     if (isVideoRotateMode.value) {
       isVideoRotateMode.value = false;
+      videoRotateLock.value = null;
       void document.exitFullscreen().catch(() => {});
     }
   });

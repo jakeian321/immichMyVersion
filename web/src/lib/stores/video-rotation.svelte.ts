@@ -12,11 +12,18 @@
 export const isVideoRotateMode = $state({ value: false });
 
 /**
+ * The angle held against the screen, or null to keep following it. A phone re-orients on
+ * its own the moment it is tilted or set down, which drops the turn mid-video; pinning it
+ * lets the screen change without the picture following.
+ */
+export const videoRotateLock = $state<{ value: boolean | null }>({ value: null });
+
+/**
  * Whether the mode should actually take effect on the screen in front of it. A portrait
  * viewport already suits a portrait video, and turning it there would crop the video to a
  * ribbon to cover a screen it was already filling - so an armed mode waits, and engages
- * the moment a landscape screen shows up. Shared rather than duplicated because the
- * viewer hides its own chrome on the same condition.
+ * the moment a landscape screen shows up, unless an angle is being held. Shared rather
+ * than duplicated because the viewer hides its own chrome on the same condition.
  */
 export const shouldRotateVideo = (viewportWidth: number, viewportHeight: number): boolean =>
-  isVideoRotateMode.value && viewportWidth > viewportHeight;
+  isVideoRotateMode.value && (videoRotateLock.value ?? viewportWidth > viewportHeight);

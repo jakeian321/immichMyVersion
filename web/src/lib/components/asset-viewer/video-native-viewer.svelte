@@ -17,7 +17,7 @@
   import { t } from 'svelte-i18n';
   import { filenameAgeAnchor, getAgeForFilename } from '$lib/stores/filename-age.store';
   import { isFaceEditMode } from '$lib/stores/face-edit.svelte';
-  import { shouldRotateVideo } from '$lib/stores/video-rotation.svelte';
+  import { shouldRotateVideo, videoRotateLock } from '$lib/stores/video-rotation.svelte';
   import FaceEditor from '$lib/components/asset-viewer/face-editor/face-editor.svelte';
 
   // Import for tag components
@@ -33,6 +33,8 @@
   import {
     mdiChevronLeft,
     mdiChevronRight,
+    mdiLock,
+    mdiLockOpenVariant,
     mdiClose,
     mdiPlus,
     mdiTag,
@@ -1125,6 +1127,19 @@
 
   let isRotated = $derived(shouldRotateVideo(windowWidth, windowHeight));
 
+  let isAngleLocked = $derived(videoRotateLock.value !== null);
+
+  // Pins the turn as it stands so the screen can change without the picture following;
+  // pressing again hands it back to the screen.
+  const toggleAngleLock = () => {
+    videoRotateLock.value = isAngleLocked ? null : isRotated;
+  };
+
+  // A held angle can outlast the screen that earned it, so the fit has to ask rather than
+  // assume: covering an upright screen would crop away most of a turned video's height to
+  // span a width it never had, so it is fitted inside one instead.
+  let fillsAfterTurning = $derived(windowWidth > windowHeight);
+
   // Turning the video is for watching it, not working on it, so the mode strips the
   // viewer back to the picture: the tagging, preview and playback controls layered over
   // the video all go, leaving only the step-through buttons below.
@@ -1197,7 +1212,7 @@
             // the viewer's grid leaves for it; cover rather than contain because the
             // point of the mode is a full panel, and a screen that isn't exactly the
             // video's inverse shape would otherwise letterbox what it just enlarged
-            'fixed left-1/2 top-1/2 object-cover'
+            `fixed left-1/2 top-1/2 ${fillsAfterTurning ? 'object-cover' : 'object-contain'}`
           : `h-full w-full max-h-screen ${$videoZoomedOut ? 'object-contain' : 'object-cover'}`,
       ]}
       style={getRotatedStyle()}
@@ -1269,6 +1284,17 @@
             onclick={onNextAsset}
           >
             <Icon path={mdiChevronRight} size="1.5rem" />
+          </button>
+          <button
+            type="button"
+            class={[
+              'rounded-full p-2 text-white transition-all',
+              isAngleLocked ? 'bg-immich-primary bg-opacity-60' : 'bg-black bg-opacity-40 hover:bg-opacity-60',
+            ]}
+            title={isAngleLocked ? $t('unlock_playback_angle') : $t('lock_playback_angle')}
+            onclick={toggleAngleLock}
+          >
+            <Icon path={isAngleLocked ? mdiLock : mdiLockOpenVariant} size="1.5rem" />
           </button>
           <!-- the way out: hiding the viewer's own bar takes the close button with it,
                and a phone has no Escape key to fall back on -->

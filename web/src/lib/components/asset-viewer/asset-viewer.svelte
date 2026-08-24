@@ -522,7 +522,7 @@
     </div>
   {/if}
 
-  {#if $slideshowState === SlideshowState.None}
+  {#if $slideshowState === SlideshowState.None && !shouldRotateVideo(viewportWidth, viewportHeight)}
     {#if isAutoAdvancing}
       <!-- While auto-advancing, tapping anywhere stops it and steps back one asset -->
       <button
@@ -637,7 +637,7 @@
             onVideoStarted={handleVideoStarted}
           />
         {/if}
-        {#if $slideshowState === SlideshowState.None && isShared && ((album && album.isActivityEnabled) || numberOfComments > 0)}
+        {#if $slideshowState === SlideshowState.None && isShared && !shouldRotateVideo(viewportWidth, viewportHeight) && ((album && album.isActivityEnabled) || numberOfComments > 0)}
           <div class="z-[9999] absolute bottom-0 right-0 mb-20 mr-8">
             <ActivityStatus
               disabled={!album?.isActivityEnabled}
@@ -689,7 +689,7 @@
     </div>
   {/if}
 
-  {#if stack && withStacked}
+  {#if stack && withStacked && !shouldRotateVideo(viewportWidth, viewportHeight)}
     {@const stackedAssets = stack.assets}
     <div
       id="stack-slideshow"
