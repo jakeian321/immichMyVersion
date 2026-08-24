@@ -2,6 +2,7 @@
   import { featureFlags } from '$lib/stores/server-config.store';
   import {
     mdiMovieEditOutline,
+    mdiPhoneRotateLandscape,
     mdiAccount,
     mdiAccountOutline,
     mdiAccountMultiple,
@@ -121,6 +122,8 @@
     <SideBarLink title={$t('collrange')} routeId="/(user)/collrange" icon={mdiFilterVariant} flippedLogo />
 
     <SideBarLink title={$t('editing')} routeId="/(user)/editing" icon={mdiMovieEditOutline} flippedLogo />
+
+    <SideBarLink title={$t('slideshow')} routeId="/(user)/slideshow" icon={mdiPhoneRotateLandscape} flippedLogo />
 
     {#if $preferences.tags.enabled && $preferences.tags.sidebarWeb}
       <SideBarLink title={$t('tags')} routeId="/(user)/tags" icon={mdiTagMultipleOutline} flippedLogo />

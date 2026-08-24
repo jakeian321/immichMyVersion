@@ -27,3 +27,37 @@ export const videoRotateLock = $state<{ value: boolean | null }>({ value: null }
  */
 export const shouldRotateVideo = (viewportWidth: number, viewportHeight: number): boolean =>
   isVideoRotateMode.value && (videoRotateLock.value ?? viewportWidth > viewportHeight);
+
+/**
+ * Arms or disarms the mode. Fullscreen goes with it because a turned video can only cover
+ * the panel when the viewport is the same shape as the panel, and browser chrome makes it
+ * shorter than that. The request has to ride on the click that calls this: browsers only
+ * grant it from a real gesture, and the later click that opens a video is too far removed.
+ */
+export const toggleVideoRotateMode = async () => {
+  isVideoRotateMode.value = !isVideoRotateMode.value;
+  // a held angle belongs to the run it was set during, not to the next one
+  videoRotateLock.value = null;
+
+  try {
+    if (isVideoRotateMode.value) {
+      await document.documentElement.requestFullscreen();
+    } else if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    }
+  } catch {
+    // fullscreen is an improvement, not a requirement - a refused request still leaves
+    // the rotation working, just against a shorter viewport
+  }
+};
+
+/** For pages that own the toggle to call on the way out, so an armed mode cannot follow
+ *  the user somewhere with no way to turn it back off. */
+export const clearVideoRotateMode = () => {
+  if (!isVideoRotateMode.value) {
+    return;
+  }
+  isVideoRotateMode.value = false;
+  videoRotateLock.value = null;
+  void document.exitFullscreen().catch(() => {});
+};

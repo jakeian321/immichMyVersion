@@ -1297,6 +1297,7 @@
   "skip_to_folders": "Skip to folders",
   "skip_to_tags": "Skip to tags",
   "slideshow": "Slideshow",
+  "slideshow_pick_tag_hint": "Pick a tag to load the media you want to watch.",
   "slideshow_settings": "Slideshow settings",
   "smallest_first": "Smallest first",
   "sort_albums_by": "Sort albums by...",
