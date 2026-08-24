@@ -17,7 +17,7 @@
   import { t } from 'svelte-i18n';
   import { filenameAgeAnchor, getAgeForFilename } from '$lib/stores/filename-age.store';
   import { isFaceEditMode } from '$lib/stores/face-edit.svelte';
-  import { shouldRotateVideo } from '$lib/stores/video-rotation.svelte';
+  import { isVideoRotateMode } from '$lib/stores/video-rotation.svelte';
   import FaceEditor from '$lib/components/asset-viewer/face-editor/face-editor.svelte';
 
   // Import for tag components
@@ -1123,7 +1123,14 @@
   let windowWidth = $state(0);
   let windowHeight = $state(0);
 
-  let isRotated = $derived(shouldRotateVideo(windowWidth, windowHeight));
+  let isRotated = $derived(isVideoRotateMode.value);
+
+  // Only a landscape screen has room for a turned portrait video, and it is the screen
+  // that decides, not the mode: covering an upright one would mean cropping away most of
+  // the video's height to span a width it never had. So the turn still happens the moment
+  // the mode is armed - it just fits inside the screen rather than over it until the
+  // screen it was meant for arrives.
+  let fillsAfterTurning = $derived(windowWidth > windowHeight);
 
   // Turning the video is for watching it, not working on it, so the mode strips the
   // viewer back to the picture: the tagging, preview and playback controls layered over
@@ -1197,7 +1204,7 @@
             // the viewer's grid leaves for it; cover rather than contain because the
             // point of the mode is a full panel, and a screen that isn't exactly the
             // video's inverse shape would otherwise letterbox what it just enlarged
-            'fixed left-1/2 top-1/2 object-cover'
+            `fixed left-1/2 top-1/2 ${fillsAfterTurning ? 'object-cover' : 'object-contain'}`
           : `h-full w-full max-h-screen ${$videoZoomedOut ? 'object-contain' : 'object-cover'}`,
       ]}
       style={getRotatedStyle()}
