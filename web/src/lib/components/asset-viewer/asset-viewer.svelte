@@ -8,7 +8,10 @@
   import { updateNumberOfComments } from '$lib/stores/activity.store';
   import { closeEditorCofirm } from '$lib/stores/asset-editor.store';
   import { assetViewingStore } from '$lib/stores/asset-viewing.store';
-  import { isVideoRotateMode } from '$lib/stores/video-rotation.svelte';
+  import { shouldRotateVideo } from '$lib/stores/video-rotation.svelte';
+
+  let viewportWidth = $state(0);
+  let viewportHeight = $state(0);
   import { isShowDetail } from '$lib/stores/preferences.store';
   import { SlideshowNavigation, SlideshowState, slideshowStore } from '$lib/stores/slideshow.store';
   import { user } from '$lib/stores/user.store';
@@ -471,6 +474,8 @@
   });
 </script>
 
+<svelte:window bind:innerWidth={viewportWidth} bind:innerHeight={viewportHeight} />
+
 <svelte:document bind:fullscreenElement />
 
 <section
@@ -480,7 +485,7 @@
 >
   <!-- Top navigation bar; hidden while playback is turned, where it would lie across
        the picture the mode exists to give the whole panel to -->
-  {#if $slideshowState === SlideshowState.None && !isShowEditor && !isVideoRotateMode.value}
+  {#if $slideshowState === SlideshowState.None && !isShowEditor && !shouldRotateVideo(viewportWidth, viewportHeight)}
     <div class="z-[1002] col-span-4 col-start-1 row-span-1 row-start-1 transition-transform">
       <AssetViewerNavBar
         {asset}
@@ -644,7 +649,7 @@
           </div>
         {/if}
 
-        {#if $slideshowState === SlideshowState.None && !isShowEditor && !isVideoRotateMode.value}
+        {#if $slideshowState === SlideshowState.None && !isShowEditor && !shouldRotateVideo(viewportWidth, viewportHeight)}
           <div class="z-[1000] absolute bottom-0 left-0 right-0 p-4 pb-10 pointer-events-none sm:pb-12">
             <p class="text-white-shadow break-words text-sm font-medium sm:text-base">
               {asset.originalFileName}
@@ -655,7 +660,7 @@
     {/if}
   </div>
 
-  {#if $slideshowState === SlideshowState.None && showNavigation && !isShowEditor && !isVideoRotateMode.value}
+  {#if $slideshowState === SlideshowState.None && showNavigation && !isShowEditor && !shouldRotateVideo(viewportWidth, viewportHeight)}
     <!-- <div class="z-[1001] my-auto col-span-1 col-start-4 row-span-full row-start-1 justify-self-end"> -->
     <div class="z-[1001] fixed left-[20%] bottom-[88%]">
       <NextAssetAction onNextAsset={() => navigateAsset('next')} />
