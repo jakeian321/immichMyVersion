@@ -1148,8 +1148,13 @@
    * The zoom and pan transforms stay outside the rotation so dragging still follows the
    * screen's axes rather than the video's.
    */
+  // Anticlockwise, so the video's top edge swings to the left. The controls are placed
+  // in a frame carrying the same turn, so this has to be the one value both of them read
+  // or the cluster would come to rest on the wrong corner of the picture.
+  const QUARTER_TURN = '270deg';
+
   const getRotatedFrameStyle = () =>
-    `width: ${windowHeight}px; height: ${windowWidth}px; transform: translate(-50%, -50%) rotate(90deg)`;
+    `width: ${windowHeight}px; height: ${windowWidth}px; transform: translate(-50%, -50%) rotate(${QUARTER_TURN})`;
 
   const getRotatedStyle = () => {
     if (!isRotated) {
@@ -1158,7 +1163,7 @@
     return [
       `width: ${windowHeight}px`,
       `height: ${windowWidth}px`,
-      `transform: translate(-50%, -50%) ${getTransformStyle()} rotate(90deg)`,
+      `transform: translate(-50%, -50%) ${getTransformStyle()} rotate(${QUARTER_TURN})`,
     ].join('; ');
   };
 
