@@ -1123,6 +1123,16 @@
   let windowWidth = $state(0);
   let windowHeight = $state(0);
 
+  // The turn rotate mode applies. The controls ride in a frame carrying the same one, so
+  // this has to be the single value both of them read or the cluster would come to rest
+  // on the wrong corner of the picture.
+  const TURN_DEGREES = 180;
+
+  // Only a quarter turn trades the video's width for its height, and only then is there a
+  // different shape to fit it to. A half turn stands the picture on its head and leaves
+  // its shape alone, so the fit is left alone with it.
+  const isQuarterTurn = TURN_DEGREES % 180 !== 0;
+
   let isRotated = $derived(isVideoRotateMode.value);
 
   // Only a landscape screen has room for a turned portrait video, and it is the screen
@@ -1130,7 +1140,7 @@
   // the video's height to span a width it never had. So the turn still happens the moment
   // the mode is armed - it just fits inside the screen rather than over it until the
   // screen it was meant for arrives.
-  let fillsAfterTurning = $derived(windowWidth > windowHeight);
+  let fillsAfterTurning = $derived(isQuarterTurn ? windowWidth > windowHeight : windowHeight > windowWidth);
 
   // Turning the video is for watching it, not working on it, so the mode strips the
   // viewer back to the picture: the tagging, preview and playback controls layered over
@@ -1148,22 +1158,21 @@
    * The zoom and pan transforms stay outside the rotation so dragging still follows the
    * screen's axes rather than the video's.
    */
-  // Anticlockwise, so the video's top edge swings to the left. The controls are placed
-  // in a frame carrying the same turn, so this has to be the one value both of them read
-  // or the cluster would come to rest on the wrong corner of the picture.
-  const QUARTER_TURN = '270deg';
+  const getTurnedBoxSize = () =>
+    isQuarterTurn
+      ? `width: ${windowHeight}px; height: ${windowWidth}px`
+      : `width: ${windowWidth}px; height: ${windowHeight}px`;
 
   const getRotatedFrameStyle = () =>
-    `width: ${windowHeight}px; height: ${windowWidth}px; transform: translate(-50%, -50%) rotate(${QUARTER_TURN})`;
+    `${getTurnedBoxSize()}; transform: translate(-50%, -50%) rotate(${TURN_DEGREES}deg)`;
 
   const getRotatedStyle = () => {
     if (!isRotated) {
       return `transform: ${getTransformStyle()}`;
     }
     return [
-      `width: ${windowHeight}px`,
-      `height: ${windowWidth}px`,
-      `transform: translate(-50%, -50%) ${getTransformStyle()} rotate(${QUARTER_TURN})`,
+      getTurnedBoxSize(),
+      `transform: translate(-50%, -50%) ${getTransformStyle()} rotate(${TURN_DEGREES}deg)`,
     ].join('; ');
   };
 
